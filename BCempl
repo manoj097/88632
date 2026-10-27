@@ -1,0 +1,886 @@
+package com.verizon.hcm.severance.api.manageemployee.entity;
+
+import java.time.LocalDateTime;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+
+import org.hibernate.envers.Audited;
+import org.hibernate.envers.RelationTargetAuditMode;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.history.RevisionMetadata;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@EntityListeners(AuditingEntityListener.class)
+@Audited
+@Table(name = "bc_employee_tbl")
+public class BcEmployeeEntity {
+
+
+    @Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	@Column(name = "bc_employee_id")
+	private Long bcEmployeeId;
+
+	@ManyToOne
+	@JoinColumn(name = "business_case_number")
+	@Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
+	private BusinessCaseEntity businessCaseEntity;
+
+	@ManyToOne
+	@JoinColumn(name = "parent_bc_id")
+	@Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
+	private ParentBusinessCaseEntity parentBusinessCaseEntity;
+
+	@ManyToOne
+	@JoinColumn(name = "calc_method_id")
+	@Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
+	private CalculationMethodConfigEntity calculationMethodConfigEntity;
+
+	@OneToOne(mappedBy = "bcEmployeeEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+	@Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
+	private RateAndRankEntity rateAndRankEntity;
+
+	@Column(name = "enterprise_id")
+	private String enterpriseId;
+	
+	@Column(name="temp_act_ind")
+	private String tempActInd;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "off_payroll_date")
+	private LocalDateTime offPayrollDate;
+
+	@CreatedDate
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "created_date")
+	private LocalDateTime createdDate;
+
+	@CreatedBy
+	@Column(name = "created_by")
+	private String createdBy;
+
+	@LastModifiedDate
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "last_modified_date")
+	private LocalDateTime lastUpdatedDate;
+
+	@LastModifiedBy
+	@Column(name = "last_modified_by")
+	private String lastModifiedBy;
+
+	@Column(name = "operation")
+	private String operation;
+
+	@Column(name = "severance_status")
+	private String severanceStatus;
+
+	@Column(name = "employee_portal_access")
+	private Boolean employeePortalAccess;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "termination_date")
+	private LocalDateTime terminationDate;
+
+	@Column(name = "extend_termination_date")
+	private Boolean extendTerminationDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "proposed_termination_date")
+	private LocalDateTime proposedTerminationDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "separation_agreement_deadline_date")
+	private LocalDateTime separationAgreementDeadlineDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "separation_agreement_release_rcvd_date")
+	private LocalDateTime separationAgreementReleaseRcvdDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "severance_benefit_period_end_date")
+	private LocalDateTime severanceBenefitPeriodEndDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "requested_severance_pay_date")
+	private LocalDateTime requestedSeverancePayDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "declination_of_notification_period")
+	private LocalDateTime declinationOfNotificationPeriod;
+
+	@Column(name = "notification_information")
+	private Boolean notificationInformation;
+
+	@Column(name = "notification_confirmed")
+	private Boolean notificationConfirmed;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "notification_confirmation_date")
+	private LocalDateTime notificationConfirmationDate;
+
+	@Column(name = "days_before_release_is_available")
+	private Integer daysBeforeReleaseIsAvailable;
+
+	@Column(name = "acknowledgement_letter_received")
+	private Boolean acknowledgementLetterReceived;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "package_extract_date")
+	private LocalDateTime packageExtractDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "severance_pay_report_date")
+	private LocalDateTime severancePayReportDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "drop_date")
+	private LocalDateTime dropDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "vacation_pay_report_date")
+	private LocalDateTime vacationPayReportDate;
+
+	@Column(name = "sti_send_for_ps")
+	private Boolean stiSendForPs;
+
+	@Column(name = "notification_manager_eid")
+	private String notificationManagerEid;
+
+	@Column(name = "emp_supervisor_eid")
+	private String empSupervisorEid;
+
+	@Column(name = "emp_supervisor_email")
+	private String empSupervisorEmail;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "vacation_as_of_dt")
+	private LocalDateTime vacationAsOfDt;
+
+	@Column(name = "unused_current_yr_hrs")
+	private Double unusedCurrentYrHrs;
+
+	@Column(name = "unused_approved_carry_ovr_hrs")
+	private Double unusedApprovedCarryOvrHrs;
+
+	@Column(name = "accured_hrs")
+	private Double accuredHrs;
+
+	@Column(name = "banked_hrs")
+	private Double bankedHrs;
+
+	@Column(name = "unused_personal_hrs")
+	private Double unusedPersonalHrs;
+
+	@Column(name = "total_vacation_hrs_to_be_paid")
+	private Double totalVacationHrsToBePaid;
+
+	@Column(name = "total_vacation_payment")
+	private Double totalVacationPayment;
+
+	@Column(name = "phone_no")
+	private String phoneNo;
+
+	@Column(name = "emp_personal_email")
+	private String empPersonalEmail;
+
+	@Column(name = "total_personal_payment")
+	private Double totalPersonalPayment;
+
+	@Column(name = "hourly_rate")
+	private Double hourlyRate;
+
+//	@Column(name = "overriden_hourly_rate")
+//	private Double overridenHourlyRate;
+
+	@Transient
+	private RevisionMetadata<Long> editVersion;
+
+	@Column(name = "overriden_severance_amt")
+	private Double overridenSeveranceAmt;
+
+	@Column(name = "calculated_severance_amt")
+	private Double calculatedSeveranceAmt;
+
+	@Column(name = "severance_amt_override_flg")
+	private Boolean severanceAmtOverrideFlg;
+
+	@Column(name = "overriden_sti_amt")
+	private Double overridenStiAmt;
+
+	@Column(name = "calculated_sti_amt")
+	private Double calculatedStiAmt;
+
+	@Column(name = "sti_amt_override_flg")
+	private Boolean stiAmtOverrideFlg;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "calculated_service_dt")
+	private LocalDateTime calculatedServiceDt;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "overriden_service_dt")
+	private LocalDateTime overridenServiceDt;
+
+	@Column(name = "service_dt_override_flg")
+	private Boolean serviceDtOverrideFlg;
+
+	@Column(name = "calculated_benefit_weeks")
+	private Long calculatedBenefitWeeks;
+
+	@Column(name = "overriden_benefit_weeks")
+	private Long overridenBenefitWeeks;
+
+	@Column(name = "benefit_weeks_override_flg")
+	private Boolean benefitWeeksOverrideFlg;
+
+	@Column(name = "calculated_retirement_eligibility_pts")
+	private Double calculatedRetirementEligibilityPts;
+
+	@Column(name = "overriden_retirement_eligibility_pts")
+	private Double overridenRetirementEligibilityPts;
+
+	@Column(name = "eligibility_pts_override_flg")
+	private Boolean eligibilityPtsOverrideFlg;
+
+	@Column(name = "calculated_annual_base_salary")
+	private Double calculatedAnnualBaseSalary;
+
+	@Column(name = "overriden_annual_base_salary")
+	private Double overridenAnnualBaseSalary;
+
+	@Column(name = "annual_base_salary_override_flg")
+	private Boolean annualBaseSalaryOverrideFlg;
+
+	@Column(name = "calculated_target_sti")
+	private Double calculatedTargetSti;
+
+	@Column(name = "calculated_short_term_incentive")
+	private Double calculatedShortTermIncentive;
+
+	@Column(name = "overriden_short_term_incentive")
+	private Double overridenShortTermIncentive;
+
+	@Column(name = "short_term_incentive_override_flg")
+	private Boolean shortTermIncentiveOverrideFlg;
+
+	@Column(name = "calculated_total_comp")
+	private Double calculatedTotalComp;
+
+	@Column(name = "overriden_total_comp")
+	private Double overridenTotalComp;
+
+	@Column(name = "total_comp_override_flg")
+	private Boolean totalCompOverrideFlg;
+
+	@Column(name = "calculated_fte")
+	private Double calculatedFte;
+
+	@Column(name = "termination_dt_proposed_by")
+	private String terminationDtProposedBy;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "termination_dt_proposed_dt")
+	private LocalDateTime terminationDtProposedDt;
+
+	@Column(name = "director_eid")
+	private String director_eid;
+
+	@Column(name = "severance_team_approver_eid")
+	private String severance_team_approver_eid;
+
+	@Column(name = "is_director_approved")
+	private Boolean isDirectorApproved;
+
+	@Column(name = "director_approved_by")
+	private String directorApprovedBy;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "director_approved_dt")
+	private LocalDateTime directorApprovedDt;
+
+	@Column(name = "is_severance_team_approved")
+	private Boolean isSeveranceTeamApproved;
+
+	@Column(name = "severance_team_approved_by")
+	private String severanceTeamApprovedBy;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "severance_approved_dt")
+	private LocalDateTime severanceApprovedDt;
+
+	@Column(name = "upload_status")
+	private Boolean uploadStatus;
+
+	@Column(name = "amountlumpnx")
+	private Double amountlumpnx;
+
+	@Column(name = "amountmonthnx")
+	private Double amountmonthnx;
+
+	@Column(name = "no_of_monthly_payment")
+	private Long noOfMonthlyPayment;
+
+	@Column(name = "paymethod2")
+	private String paymethod2;
+
+	@Column(name = "paymethod2enabled")
+	private Boolean paymethod2enabled;
+
+	@Column(name = "expense_allowance_amount")
+	private Long expenseAllowanceAmount;
+
+	@Column(name = "pentypecd")
+	private String pentypecd;
+
+	@Column(name = "process_id")
+	private String processId;
+
+	@Column(name = "is_offer_notification_sent")
+	private Boolean isOfferNotificationSent;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "offer_notification_sent_date")
+	private LocalDateTime offerNotificationSentDate;
+
+	@Column(name = "vol_notification_status")
+	private Boolean volNotificationStatus;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "vol_notification_date")
+	private LocalDateTime volNotificationDate;
+
+	@Column(name = "conduent_f1_req_flag")
+	private Boolean conduentF1ReqFlag;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "conduent_f1_req_date")
+	private LocalDateTime conduentF1ReqDate;
+
+	@Column(name = "conduent_f1_res_flag")
+	private Boolean conduentF1ResFlag;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "conduent_f1_res_date")
+	private LocalDateTime conduentF1ResDate;
+
+	@Column(name = "separation_status_code")
+	private String separationStatusCode;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "notification_date")
+	private LocalDateTime notificationDate;
+
+	@Column(name = "last_yr_rating")
+	private Long lastYrRating;
+
+	@Column(name = "last_bfr_yr_rating")
+	private Long lastBfrYrRating;
+
+	@Column(name = "total_ratings")
+	private Long totalRatings;
+
+	@Column(name = "is_director_rejected")
+	private Boolean isDirectorRejected;
+
+	@Column(name = "director_rejected_by")
+	private String directorRejectedBy;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "director_rejected_dt")
+	private LocalDateTime directorRejectedDt;
+
+	@Column(name = "is_severance_team_rejected")
+	private Boolean isSeveranceTeamRejected;
+
+	@Column(name = "severance_team_rejected_by")
+	private String severanceTeamRejectedBy;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "severance_rejected_dt")
+	private LocalDateTime severanceRejectedDt;
+
+//	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+//	@Column(name = "overriden_vacation_as_of_dt")
+//	private LocalDateTime overridenVacationAsOfDt;
+//
+//	@Column(name = "overriden_current_yr_hrs")
+//	private Double overridenCurrentYrHrs;
+//
+//	@Column(name = "overriden_approved_carry_ovr_hrs")
+//	private Double overridenApprovedCarryOvrHrs;
+//
+//	@Column(name = "overriden_accured_hrs")
+//	private Double overridenAccuredHrs;
+//
+//	@Column(name = "overriden_banked_hrs")
+//	private Double overridenBankedHrs;
+//
+//	@Column(name = "overriden_personal_hrs")
+//	private Double overridenPersonalHrs;
+//
+//	@Column(name = "overriden_total_vacation_hrs")
+//	private Double overridenTotalVacationHrs;
+//
+//	@Column(name = "overriden_total_vacation_payment")
+//	private Double overridenTotalVacationPayment;
+//
+//	@Column(name = "overriden_total_personal_payment")
+//	private Double overridenTotalPersonalPayment;
+
+	@Column(name = "state_amt")
+	private Double stateAmt;
+
+	@Column(name = "overriden_state_amt")
+	private Double overridenStateAmt;
+
+	@Column(name = "state_amt_override_flg")
+	private Boolean stateAmtOverrideFlg;
+
+	@Column(name = "final_severance_amt")
+	private Double finalSeveranceAmt;
+
+	@Column(name = "overriden_final_severance_amt")
+	private Double overridenFinalSeveranceAmt;
+
+	@Column(name = "final_severance_amt_override_flg")
+	private Boolean finalSeveranceAmtOverrideFlg;
+
+	@Column(name = "decline_notify_period")
+	private Boolean declineNotifyPeriod;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "acknowledgement_letter_received_dt")
+	private LocalDateTime acknowledgementLetterReceivedDt;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "transaction_termination_dt")
+	private LocalDateTime transactionTerminationDt;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "overriden_transaction_termination_dt")
+	private LocalDateTime overridenTransactionTerminationDt;
+
+	@Column(name = "term_dt_transaction_override_flg")
+	private Boolean termDtTransactionOverrideFlg;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "overriden_severance_pay_report_dt")
+	private LocalDateTime overridenSeverancePayReportDt;
+
+	@Column(name = "svrnc_pay_report_dt_override_flg")
+	private Boolean svrncPayReportDtOverrideFlg;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "sti_pay_report_dt")
+	private LocalDateTime stiPayReportDt;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "overriden_sti_pay_report_dt")
+	private LocalDateTime overridenStiPayReportDt;
+
+	@Column(name = "sti_pay_report_dt_override_flg")
+	private Boolean stiPayReportDtOverrideFlg;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "overriden_vacation_pay_report_dt")
+	private LocalDateTime overridenVacationPayReportDt;
+
+	@Column(name = "vacation_pay_report_dt_override_flg")
+	private Boolean vacationPayReportDtOverrideFlg;
+
+	@Column(name = "severance_accural_years_override_flg")
+	private Boolean severanceAccuralYearsOverrideFlg;
+
+	@Column(name = "revoke_volunteer_flg")
+	private Boolean revokeVolunteerFlg;
+
+	@Column(name = "amountlumpnx_override_flg")
+	private Boolean amountlumpnxOverrideFlg;
+
+	@Column(name = "amountmonthnx_override_flg")
+	private Boolean amountmonthnxOverrideFlg;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "revoke_volunteer_date ")
+	private LocalDateTime revokeVolunteerDate;
+
+	@Column(name = "severance_accural_years_overriden")
+	private Double severanceAccuralYearsOverriden;
+
+	@Column(name = "amountlumpnx_overriden")
+	private Double amountlumpnxOverriden;
+
+	@Column(name = "amountmonthnx_overriden")
+	private Double amountmonthnxOverriden;
+
+	@Column(name = "payment_allowance_amount")
+	private Double paymentAllowanceAmount;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "volunteer_esign_date ")
+	private LocalDateTime volunteerEsignDate;
+
+//	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+//	@Column(name = "recent_proposed_term_dt")
+//	private LocalDateTime recentProposedTermDt;
+
+	@Column(name = "years_of_service")
+	private Double yearsOfService;
+
+	@Column(name = "years_of_service_overriden")
+	private Double yearsOfServiceOverriden;
+
+	@Column(name = "years_of_service_overrideflg")
+	private Boolean yearsOfServiceOverrideFlg;
+
+	@Column(name = "override_warn_governance_state_flg")
+	private Boolean overrideWarnGovernanceStateFlg;
+
+	@Column(name = "override_warn_governance_state")
+	private String overrideWarnGovernanceState;
+
+	@Column(name = "work_state")
+	private String workState;
+
+	@Column(name = "volunteer_late_termination_flag")
+	private Boolean volunteerLateTerminationFlag;
+
+	@Column(name = "inavlid_payment_types")
+	private String inavlidPaymentTypes;
+
+	@Column(name = "exceeds_twice_annual_comp")
+	private Boolean exceedsTwiceAnnualComp;
+
+	@Column(name = "participation_status")
+	private Boolean participationStatus;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "overridden_notification_date ")
+	private LocalDateTime overriddenNotificationDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "state_pay_report_date")
+	private LocalDateTime statePayReportDt;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "overridden_state_pay_report_date")
+	private LocalDateTime overridenStatePayReportDt;
+
+	@Column(name = "overridden_state_pay_report_date_flg")
+	private Boolean statePayReportDateOverrideFlg;
+
+	@Column(name = "recent_termdt_request_id")
+	private Long recentTermdtRequestId;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "override_revoke_date")
+	private LocalDateTime overridenRevokeDate;
+
+	@Column(name = "override_revoke_date_flg")
+	private Boolean overridenRevokeDateFlg;
+
+	@Column(name = "revoke_reason")
+	private String revokeReason;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "override_volunteer_date")
+	private LocalDateTime overridenVolunteerDate;
+
+	@Column(name = "override_volunteer_date_flg")
+	private Boolean overridenVolunteerDateFlg;
+
+	@Column(name = "volunteer_reason")
+	private String volunteerReason;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "overriden_separation_agreement_release_rcvd_date")
+	private LocalDateTime overridenSeparationAgreementReleaseRcvdDate;
+
+	@Column(name = "overriden_separation_agreement_release_rcvd_date_flg")
+	private Boolean overridenSeparationAgreementReleaseRcvdDateFlg;
+
+	@Column(name = "home_state")
+	private String homeState;
+
+	// IVD-84626 added new columns
+
+	@Column(name = "employee_id")
+	private String employeeId;
+
+	@Column(name = "legal_first_name")
+	private String legalFirstName;
+
+	@Column(name = "legal_last_name")
+	private String legalLastName;
+
+	@Column(name = "legal_middle_name")
+	private String legalMiddleName;
+
+	@Column(name = "cost_center")
+	private String costCenter;
+
+	@Column(name = "line_of_business")
+	private String lineOfBusiness;
+
+	@Column(name = "country")
+	private String country;
+
+	@Column(name = "work_city")
+	private String workCity;
+
+	@Column(name = "location")
+	private String location;
+
+	@Column(name = "location_reference_id")
+	private String locationReferenceId;
+	
+	@Column(name = "perm_location")
+	private String permLocation;
+	
+	@Column(name = "perm_location_name")
+	private String permLocationName;
+
+	@Column(name = "job_title")
+	private String jobTitle;
+
+	@Column(name = "current_year_performance_rating")
+	private String currentYearPerformanceRating;
+
+	@Column(name = "gender")
+	private String gender;
+
+	@Column(name = "age")
+	private String age;
+
+	@Column(name = "ethnicity")
+	private String ethnicity;
+
+	@Column(name = "job_code")
+	private String jobCode;
+
+	@Column(name = "union_local")
+	private String unionLocal;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "hire_date")
+	private LocalDateTime hireDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "original_hire_date")
+	private LocalDateTime originalHireDate;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "job_start_date")
+	private LocalDateTime jobStartDate;
+
+	@Column(name = "manager_eid")
+	private String managerEid;
+
+	@Column(name = "is_manager")
+	private String isManager;
+
+	@Column(name = "management_level")
+	private String managementLevel;
+
+	@Column(name = "manager_name")
+	private String managerName;
+
+	@Column(name = "manager_enterprise_id")
+	private String managerEnterpriseId;
+
+	@Column(name = "annual_rt")
+	private String annualRt;
+
+	@Column(name = "retention_currency_by_country")
+	private String retentionCurrencyByCountry;
+
+	@Column(name = "worker_status")
+	private String workerStatus;
+
+	@Column(name = "worker_type")
+	private String workerType;
+
+	@Column(name = "employee_type")
+	private String employeeType;
+
+	@Column(name = "candidate_type")
+	private String candidateType;
+
+	@Column(name = "company_reference_id")
+	private String companyReferenceId;
+
+	@Column(name = "company_name")
+	private String companyName;
+
+	@Column(name = "collective_agreement_reference_id")
+	private String collectiveAgreementReferenceId;
+
+	@Column(name = "collective_agreement_description")
+	private String collectiveAgreementDescription;
+
+	@Column(name = "payroll_status")
+	private String payrollStatus;
+
+	@Column(name = "job_level")
+	private String jobLevel;
+
+	@Column(name = "mgmt_associate_flag")
+	private String mgmtAssociateFlag;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "birth_date")
+	private LocalDateTime birthDate;
+
+	@Column(name = "sti_tgt_pct")
+	private String stiTgtPct;
+
+	@Column(name = "sales_inc_pct")
+	private String salesIncPct;
+
+	@Column(name = "sales_target_amount")
+	private String salesTargetAmount;
+
+	@Column(name = "fte")
+	private String fte;
+
+	@Column(name = "company_code_name")
+	private String companyCodeName;
+
+	@Column(name = "faa")
+	private String faa;
+
+	@Column(name = "visa_type")
+	private String visaType;
+	
+	@Column(name = "visa_status")
+	private String visaStatus;
+
+	@Column(name = "leave_type")
+	private String leaveType;
+
+	@Column(name = "is_retirement_eligible")
+	private String isRetirementEligible;
+
+	@Column(name = "pension")
+	private String pension;
+
+	@Column(name = "home_address")
+	private String homeAddress;
+
+	@Column(name = "work_address")
+	private String workAddress;
+
+	@Column(name = "home_phone")
+	private String homePhone;
+
+	@Column(name = "work_phone")
+	private String workPhone;
+
+	@Column(name = "personal_email")
+	private String personalEmail;
+
+	@Column(name = "work_email")
+	private String workEmail;
+
+	@Column(name = "pension_band")
+	private String pensionBand;
+
+	@Column(name = "fte_position_changes")
+	private Boolean ftePositionChanges;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "seniority_date")
+	private LocalDateTime seniorityDate;
+
+	@Column(name = "home_zip_code")
+	private String homeZipCode;
+
+	@Column(name = "work_zip_code")
+	private String workZipCode;
+
+	@Column(name = "overridden_final_pay_report_date_flg")
+	private Boolean finalSvrncPayReportDateOverrideFlg;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "final_pay_report_date")
+	private LocalDateTime finalPayReportDt;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "overridden_final_pay_report_date")
+	private LocalDateTime overridenFinalSeverancePayReportDt;
+
+	@Column(name = "day1_severance_status")
+	private String day1SeveranceStatus;
+
+	@Column(name = "severance_portal_user_id")
+	private String severancePortalUserId;
+
+	@Column(name = "source_of_deletion")
+	private String sourceOfDeletion;
+	
+	@Column(name = "perm_job_code")
+	private String permJobCode;
+
+	@Column(name = "perm_job_title")
+	private String permJobTitle;
+
+	@Column(name = "perm_mgmt_level")
+	private String permMgmtLevel;
+
+	@Column(name = "is_regenerate_doc")
+	private Boolean isRegenerateDoc;
+	@Column(name = "bau_plancode_flag")
+	private Boolean bauPlancodeFlag;
+	
+	@Column(name = "bau_plancode")
+	private Long bauPlancode;
+	
+	@Column(name = "bau_calc_method_id")
+	private Long bauCalcMethodId;
+	
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "employee_portal_login")
+	private LocalDateTime employeePortalLogin;
+
+	@Column(name = "redeployed_notification_sent_flag")
+	private Boolean redeployedNotificationSentFlag;
+
+	@JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+	@Column(name = "redeployed_notification_sent_dt")
+	private LocalDateTime redeployedNotificationSentDt;
+
+    @Column(name = "volunteer_end_date_override_flg")
+    private Boolean overriddenVolunteerPeriodEndDateFlg;
+
+    @Column(name = "overridden_end_dt_of_volunteer_period")
+    private LocalDateTime overriddenVolunteerPeriodEndDate;
+
+    @Column(name = "work_street")
+    private String workStreet;
+}
