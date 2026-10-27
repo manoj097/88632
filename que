@@ -1,0 +1,10 @@
+SELECT enterprise_id,
+       severance_status,
+       vol_notification_status,
+       vol_notification_date,
+       is_offer_notification_sent,
+       offer_notification_sent_date
+FROM bc_employee_tbl
+WHERE enterprise_id IN ('6503315531','7459002277','1305438241',
+                        '7117252486','7973040561')
+ORDER BY enterprise_id;
