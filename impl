@@ -1,0 +1,2711 @@
+package com.verizon.hcm.severance.api.bcassociate.service;
+
+import java.time.*;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+import com.verizon.hcm.severance.lib.dto.*;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
+
+import com.google.gson.Gson;
+import com.verizon.hcm.common.api.dto.NotificationRs;
+import com.verizon.hcm.severance.api.bcassociate.dao.VolunteerManagementSpecification;
+import com.verizon.hcm.severance.api.bcassociate.entity.BcEmployeeEntity;
+import com.verizon.hcm.severance.api.bcassociate.entity.BcEmployeeEntityForVolunteerManagement;
+import com.verizon.hcm.severance.api.bcassociate.entity.BcEmployeeNoteAuditEntity;
+import com.verizon.hcm.severance.api.bcassociate.entity.BusinessCaseEntity;
+import com.verizon.hcm.severance.api.bcassociate.entity.ChildParentEntity;
+import com.verizon.hcm.severance.api.bcassociate.entity.EmployeeSummaryEntity;
+import com.verizon.hcm.severance.api.bcassociate.entity.ParentBusinessCaseEntity;
+import com.verizon.hcm.severance.api.bcassociate.entity.PlanCodeEntity;
+import com.verizon.hcm.severance.api.bcassociate.helper.BusinessCaseAuditHelper;
+import com.verizon.hcm.severance.api.bcassociate.helper.JWTTokenHelper;
+import com.verizon.hcm.severance.api.bcassociate.helper.NotificationHelper;
+import com.verizon.hcm.severance.api.bcassociate.helper.VolunteerBusinessCaseFaaComparator;
+import com.verizon.hcm.severance.api.bcassociate.helper.VolunteerBusinessCaseJobTitleComparator;
+import com.verizon.hcm.severance.api.bcassociate.repository.AssociateBcRepository;
+import com.verizon.hcm.severance.api.bcassociate.repository.BcEmployeeForVolunteerManagementRepository;
+import com.verizon.hcm.severance.api.bcassociate.repository.BcEmployeeNoteRepository;
+import com.verizon.hcm.severance.api.bcassociate.repository.BcEmployeeRepository;
+import com.verizon.hcm.severance.api.bcassociate.repository.ChildParentRepository;
+import com.verizon.hcm.severance.api.bcassociate.repository.ParentBusinessCaseRepository;
+import com.verizon.hcm.severance.api.bcassociate.repository.PlanCodeRepository;
+import com.verizon.hcm.severance.api.bcassociate.repository.UploadEmployeesRepository;
+import com.verizon.hcm.severance.api.bcassociate.repository.VolunteerManagementCustomRepository;
+import com.verizon.hcm.severance.lib.dto.associate.dto.AssociateBusinessCaseConstant;
+import com.verizon.hcm.severance.lib.dto.associate.dto.UniverseDetailsCount;
+import com.verizon.hcm.severance.lib.dto.associate.dto.VolunteerBcResponse;
+import com.verizon.hcm.severance.lib.dto.associate.dto.VolunteerBusinessCase;
+import com.verizon.hcm.severance.lib.dto.associate.dto.VolunteerFilterRs;
+import com.verizon.hcm.severance.lib.dto.associate.dto.VolunteerManagementRq;
+import com.verizon.hcm.severance.lib.dto.associate.dto.VolunteerNotificationRq;
+import com.verizon.hcm.severance.lib.dto.calculation.dto.EmployeeSummaryVwData;
+import java.util.concurrent.Future;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.log4j.Log4j2;
+
+@Service
+@Log4j2
+public class VolunteerManagementServiceImpl implements VolunteerManagementService {
+	private final Logger LOGGER = LoggerFactory.getLogger(VolunteerManagementServiceImpl.class);
+
+	@Autowired
+	private VolunteerManagementCustomRepository repo;
+
+	@Autowired
+	private BcEmployeeRepository bcEmployeeRepository;
+
+	@Autowired
+	private BcEmployeeForVolunteerManagementRepository bcEmployeeForVolunteerManagementRepository;
+
+	@Autowired
+	private AssociateBcRepository associateBcRepository;
+
+	@Autowired
+	private ParentBusinessCaseRepository parentBusinessCaseRepository;
+
+	@Autowired
+	private BcEmployeeNoteRepository bcEmployeeNoteRepository;
+
+	@PersistenceContext
+	EntityManager entity;
+
+	@Autowired
+	private String hcmURL;
+
+	@Autowired
+	private RestTemplate proxyRestTemplate;
+
+	@Autowired
+	private JWTTokenHelper jwtHelper;
+
+	@Autowired
+	private NotificationHelper notificationHelper;
+
+	@Autowired
+	private ChildParentRepository childParentRepository;
+
+	@Autowired
+	private PlanCodeRepository planCodeRepository;
+
+	@Autowired
+	private VolunteerManagementSpecification volunteerManagementSpecification;
+
+	@Autowired
+	private BusinessCaseAuditHelper businessCaseAuditHelper;
+
+	@Autowired
+	private UploadEmployeesRepository uploadEmployeesRepository;
+
+	private static Map<String, Comparator<? super VolunteerBusinessCase>> sortingOptions = new HashMap<>();
+	private static Map<String, Comparator<? super VolunteerList>> sortingVolunteerOptions = new HashMap<>();
+
+	final DateTimeFormatter auditDateFormat = DateTimeFormatter.ofPattern("MM/dd/yyyy");
+
+	@PostConstruct
+	public void init() {
+		sortingOptions.put("psBusinessCaseNumber",
+				Comparator.comparing(VolunteerBusinessCase::getPsBusinessCaseNumber));
+		sortingOptions.put("startDateOfVolunteerPeriod",
+				Comparator.comparing(VolunteerBusinessCase::getStartDateOfVolunteerPeriod));
+		sortingOptions.put("terminationDate", Comparator.comparing(VolunteerBusinessCase::getTerminationDate));
+		sortingOptions.put("universe", Comparator.comparing(VolunteerBusinessCase::getUniverse));
+		sortingOptions.put("surplusCount", Comparator.comparing(VolunteerBusinessCase::getSurplusCount));
+		sortingOptions.put("volunteerCount", Comparator.comparing(VolunteerBusinessCase::getVolunteerCount));
+		sortingOptions.put("oversubscribedCount", Comparator.comparing(VolunteerBusinessCase::getOversubscribedCount));
+		sortingOptions.put("nonVolunteerCount", Comparator.comparing(VolunteerBusinessCase::getNonVolunteerCount));
+		sortingOptions.put("faa", Comparator.comparing(VolunteerBusinessCase::getFaa));
+		sortingOptions.put("businessCaseNumber", Comparator.comparing(VolunteerBusinessCase::getBusinessCaseNumber));
+		sortingOptions.put("activeParentBusinesstCaseNumber",
+				Comparator.comparing(VolunteerBusinessCase::getActiveParentBusinesstCaseNumber));
+		sortingVolunteerOptions.put("enterpriseId", Comparator.comparing(VolunteerList::getEnterpriseId));
+		sortingVolunteerOptions.put("employeeName", Comparator.comparing(VolunteerList::getLastName));
+		sortingVolunteerOptions.put("seniorityDate", Comparator.comparing(VolunteerList::getSeniorityDate));
+		sortingVolunteerOptions.put("businessCaseNoPc", Comparator.comparing(VolunteerList::getBusinessCaseNoPc));
+		sortingVolunteerOptions.put("bcStatus", Comparator.comparing(VolunteerList::getBcStatus));
+		sortingVolunteerOptions.put("statusCode", Comparator.comparing(VolunteerList::getStatusCode));
+		sortingVolunteerOptions.put("volNotificationStatusSent",
+				Comparator.comparing(VolunteerList::getVolNotificationStatusSent));
+		sortingVolunteerOptions.put("volNotificationTimestamp",
+				Comparator.comparing(VolunteerList::getVolNotificationTimestamp));
+
+	}
+
+	@Override
+	public LookUpResponse getBcNo(int limit, int offSet, String bcno) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class getBcNo() method start");
+		List<String> activeChildBc = associateBcRepository.getAllActiveBcList();
+		List<String> activeParentBc = parentBusinessCaseRepository.getAllActiveBcList();
+		if (bcno != null && !bcno.isEmpty()) {
+			activeChildBc = associateBcRepository.getAllActiveBcList(bcno);
+			activeParentBc = parentBusinessCaseRepository.getAllActiveBcList(bcno);
+		}
+		List<String> bcList = new ArrayList<>();
+		bcList.addAll(activeChildBc);
+		bcList.addAll(activeParentBc);
+		Pageable pageable = PageRequest.of(offSet, limit);
+		int start = pageable.getPageNumber();
+		int end = Math.min((start + pageable.getPageSize()), bcList.size());
+		Page<String> response = new PageImpl<>(bcList.subList(start, end), pageable, bcList.size());
+		LOGGER.info("Inside VolunteerManagementServiceImpl class getBcNo() method end");
+		return LookUpResponse.builder().options(response.toList()).totalElements((long) bcList.size())
+				.numberOfElements(response.getNumberOfElements()).build();
+	}
+
+	@Override
+	public LookUpResponse getPlanCodes(String role, int limit, int offSet, String planCode) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class getPlanCodes() method start");
+		Page<PlanCodeEntity> planCodeEntityList = null;
+		List<Long> planCodeList = associateBcRepository.getAllActiveBcs();
+		if (planCodeList == null) {
+			return null;
+		}
+		Pageable page = PageRequest.of(offSet, limit);
+		if (planCode == null) {
+			planCodeEntityList = planCodeRepository.findAllByPlanCodeId(planCodeList, page);
+		} else {
+			planCodeEntityList = planCodeRepository.findAllByPlanCode(planCodeList, planCode, page);
+		}
+
+		Map<String, String> planCodes = new TreeMap<>();
+		planCodeEntityList.forEach(p -> {
+			planCodes.put(p.getPlanCode(), p.getPlanCodeDesc());
+		});
+		LOGGER.info("Inside VolunteerManagementServiceImpl class getPlanCodes() method end");
+		return LookUpResponse.builder().planCode(planCodes).totalElements(planCodeEntityList.getTotalElements())
+				.numberOfElements(planCodeEntityList.getNumberOfElements()).build();
+	}
+
+	@Override
+//	public VolunteerListResponse searchEmployees(VolunteerManagementFilter volunteerListFilter, String loggedInUser,
+//			String role, int pageNumber, int pageSize) {
+//		List<BusinessCaseEntity> businessCaseEntities = findBcBasedOnRole(role, loggedInUser, volunteerListFilter);
+//		VolunteerListResponse response = new VolunteerListResponse();
+//		List<VolunteerList> volunteerListsLists = new ArrayList<>();
+//		List<Long> integers = new ArrayList<>();
+//		List<Long> num = new ArrayList<>();
+//		if (!CollectionUtils.isEmpty(businessCaseEntities)) {
+//			List<BcEmployeeEntity> employeeEntityList = new ArrayList<>();
+//			List<Long> childBc = businessCaseEntities.stream().map(e -> e.getBusinessCaseNumber())
+//					.collect(Collectors.toList());
+////			List<String> parentBc = businessCaseEntities.stream()
+////					.filter(employee -> !StringUtils.isEmpty(employee.getActiveParentBusinesstCaseNumber()))
+////					.map(e -> e.getActiveParentBusinesstCaseNumber()).distinct().collect(Collectors.toList());
+//			
+////			List<Long> parentBc = childParentRepository.getAllActiveParentBc(childBc);
+////			
+////			List<BcEmployeeEntity> bc = bcEmployeeRepository.getListOfEmployeesByParentBcNumberList(childBc, parentBc);
+////			employeeEntityList.addAll(bc);
+////			num.add((long) bc.size());
+//////			businessCaseEntities.stream().forEach(bcEntity -> {
+//////				if (bcEntity.getActiveParentBusinesstCaseNumber() == null) {
+//////					integers.add(Long.parseLong(bcEntity.getSurplusCount()));
+//////				}
+//////			});
+////			if (parentBc != null) {
+////				parentBc.stream().forEach(entity -> {
+////					ParentBusinessCaseEntity parentEntity = parentBusinessCaseRepository
+////							.findByParentBusinessCaseNumber(entity);
+////					integers.add(Long.parseLong(parentEntity.getSurplusCount()));
+////				});
+////			}
+//			if (!CollectionUtils.isEmpty(employeeEntityList)) {
+//				Set<String> empSet = new LinkedHashSet<>();
+//				empSet = employeeEntityList.parallelStream()
+//						.filter(employee -> employee.getSeveranceStatus() != null
+//								&& !employee.getSeveranceStatus().equals("E"))
+//						.filter(employee -> (CollectionUtils.isEmpty(volunteerListFilter.getSeveranceStatus()) ? true
+//								: volunteerListFilter.getSeveranceStatus().contains(employee.getSeveranceStatus())))
+//						.map(employee -> employee.getEnterpriseId()).collect(Collectors.toSet());
+//				JsonArray employeeArray = convertJsonStringToObject(empSet);
+//				volunteerListsLists = getManageEmployeeList(employeeArray, volunteerListsLists, employeeEntityList);
+//
+//			}
+//
+//		}
+//
+//		List<VolunteerList> volunteerListsList = volunteerListsLists.parallelStream()
+//				.filter(employee -> (StringUtils.isEmpty(volunteerListFilter.getEmpIdOrName()) ? true
+//						: volunteerListFilter.getEmpIdOrName().equalsIgnoreCase(employee.getEnterpriseId()))
+//						|| volunteerListFilter.getEmpIdOrName().equalsIgnoreCase(employee.getEmployeeName()))
+//				.collect(Collectors.toList());
+//		Long numbers = volunteerListsList.stream()
+//				.filter(employee -> employee.getStatusCode() != null && !employee.getStatusCode().equals("E")).count();
+//		Long overSubScribeCount = volunteerListsList.stream()
+//				.filter(employee -> employee.getStatusCode() != null && employee.getStatusCode().equalsIgnoreCase("O"))
+//				.count();
+//
+//		Set<String> unionList = volunteerListsList.parallelStream()
+//				.filter(employee -> !StringUtils.isEmpty(employee.getUnion())).map(employee -> employee.getUnion())
+//				.collect(Collectors.toSet());
+//		Set<String> cbaList = volunteerListsList.parallelStream()
+//				.filter(employee -> !StringUtils.isEmpty(employee.getCBA())).map(employee -> employee.getCBA())
+//				.collect(Collectors.toSet());
+//		Set<String> bcList = volunteerListsList.parallelStream()
+//				.filter(employee -> !StringUtils.isEmpty(employee.getBusinessCaseNoPc()))
+//				.map(employee -> employee.getBusinessCaseNoPc()).collect(Collectors.toSet());
+//		Set<String> severanceStatusList = volunteerListsList.parallelStream()
+//				.filter(employee -> !StringUtils.isEmpty(employee.getStatusCode()))
+//				.map(employee -> employee.getStatusCode()).collect(Collectors.toSet());
+//
+//		Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+//		int start = (int) pageable.getOffset();
+//		int end = Math.min((start + pageable.getPageSize()), volunteerListsList.size());
+//		Page<VolunteerList> volunteerListPages = new PageImpl<>(volunteerListsList.subList(start, end), pageable,
+//				volunteerListsList.size());
+//		response.setVolunteerList(volunteerListPages.getContent());
+//		response.setCbaList(cbaList);
+//		response.setBcList(bcList);
+//		response.setUnionList(unionList);
+//		response.setSeveranceStatusList(severanceStatusList);
+//		response.setNumberOfElements(volunteerListPages.getNumberOfElements());
+//		response.setCurrentPageNumber(volunteerListPages.getPageable().getPageNumber() + 1);
+//		response.setTotalElements(volunteerListPages.getTotalElements());
+//		response.setPageSize(volunteerListPages.getPageable().getPageSize());
+//		response.setTotalPages(volunteerListPages.getTotalPages());
+//		response.setVolunteerCount(numbers);
+//		response.setUniverse(num.stream().mapToLong(Long::intValue).sum());
+//		response.setSurPlus(integers.stream().mapToLong(Long::intValue).sum());
+//		response.setOverSubscribe(overSubScribeCount);
+//		return response;
+//	}
+
+	public VolunteerListResponse searchEmployees(VolunteerManagementFilter volunteerFilter, int pageNumber,
+			int pageSize) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() method start");
+
+		if (volunteerFilter.getSeveranceStatus() != null) {
+			List<String> status = new ArrayList<>();
+			volunteerFilter.getSeveranceStatus().forEach(v -> {
+				switch (v) {
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_V:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_O:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VA:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VD:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD);
+					break;
+				default:
+					break;
+				}
+			});
+			volunteerFilter.getSeveranceStatus().clear();
+			volunteerFilter.setSeveranceStatus(status);
+		}
+
+		List<VolunteerList> volunteerList = new ArrayList<>();
+		/*
+		 * get all BCs
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() getting all BCs");
+
+		/*
+		 * Need to delete after parent changes moved
+		 * 
+		 * List<BusinessCaseEntity> bcEntityList = associateBcRepository
+		 * .findAll(volunteerManagementSpecification.getVolunteerBcFilter(
+		 * volunteerFilter));
+		 * 
+		 * LOGGER.info(
+		 * "Inside VolunteerManagementServiceImpl class searchEmployees() getting child BC which is not added to parent"
+		 * ); List<ChildParentEntity> notInParent = new ArrayList<>();
+		 * bcEntityList.forEach(e -> { notInParent.addAll(e.getChildParentList()); });
+		 * List<Long> bcId = new ArrayList<>(); notInParent.forEach(p -> { if
+		 * (p.getParentStatus().equalsIgnoreCase("Active")) {
+		 * bcId.add(p.getBusinessCaseEntity().getBusinessCaseNumber()); } });
+		 * volunteerFilter.setBcNumber(bcId.stream().distinct().collect(Collectors.
+		 * toList())); List<BusinessCaseEntity> childBcEntityList =
+		 * associateBcRepository
+		 * .findAll(volunteerManagementSpecification.getVolunteerBcFilter(
+		 * volunteerFilter));
+		 */
+
+		// get parent BC numbers based on filter criteria
+		List<Long> bcId = new ArrayList<>();
+		List<Long> bcIdParent = new ArrayList<>();
+
+		List<ParentBusinessCaseEntity> parentBcEntityLists = parentBusinessCaseRepository
+				.findAll(volunteerManagementSpecification.getVolunteerParentBcFilter(volunteerFilter));
+		volunteerFilter.setParentBusinessCaseNumber(parentBcEntityLists.stream()
+				.map(ParentBusinessCaseEntity::getParentBusinessCaseNumber).collect(Collectors.toList()));
+		if (CollectionUtils.isNotEmpty(volunteerFilter.getParentBusinessCaseNumber())) {
+			List<BusinessCaseEntity> bcEntityListforParent = associateBcRepository
+					.findAll(volunteerManagementSpecification.getVolunteerEmployeeFilterForParent(volunteerFilter));
+
+			List<ChildParentEntity> InParent = new ArrayList<>();
+			bcEntityListforParent.forEach(e -> {
+				InParent.addAll(e.getChildParentList());
+			});
+			InParent.forEach(p -> {
+				if (p.getParentStatus().equalsIgnoreCase("Active")) {
+					bcId.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+					bcIdParent.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+				}
+			});
+		}
+
+		/*
+		 * get all BCs
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class  searchEmployees() gettingmethod get all BCs from associateBcRepository");
+		List<BusinessCaseEntity> bcEntityList = associateBcRepository
+				.findAll(volunteerManagementSpecification.getVolunteerEmployeeFilter(volunteerFilter));
+
+		/*
+		 * get child BC which is not added to parent
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchEmployees() getting child BC which is not added to parent");
+		List<ChildParentEntity> notInParent = new ArrayList<>();
+		bcEntityList.forEach(e -> {
+			notInParent.addAll(e.getChildParentList());
+		});
+		notInParent.forEach(p -> {
+			if (p.getParentStatus().equalsIgnoreCase("Active")) {
+				bcId.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+			}
+		});
+		volunteerFilter.setBcNumber(bcId.stream().distinct().collect(Collectors.toList()));
+		List<BusinessCaseEntity> childBcEntityList = associateBcRepository
+				.findAll(volunteerManagementSpecification.getVolunteerEmployeeFilter(volunteerFilter));
+
+		/*
+		 * get parent Bc
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() getting parent Bc");
+		List<ParentBusinessCaseEntity> parentBcEntityList = new ArrayList<>();
+		List<ChildParentEntity> childParentEntityList = new ArrayList<>();
+		if (CollectionUtils.isNotEmpty(bcIdParent)) {
+			List<Long> parentId = associateBcRepository.getParentBc(volunteerFilter.getBusinessCaseNumber());
+			childParentEntityList = childParentRepository
+					.findAll(volunteerManagementSpecification.getChildParentFilter(bcIdParent, parentId));
+			childParentEntityList.forEach(cp -> {
+				if (cp.getParentStatus().equalsIgnoreCase("Active")) {
+					parentBcEntityList.add(cp.getParentBusinessCaseEntity());
+				}
+				if (cp.getBusinessCaseEntity().getStatus().equalsIgnoreCase("Active")
+						&& !cp.getParentStatus().equalsIgnoreCase("Active") && !volunteerFilter.getBcNumber()
+								.contains(cp.getBusinessCaseEntity().getBusinessCaseNumber())) {
+					childBcEntityList.add(cp.getBusinessCaseEntity());
+				}
+			});
+		}
+
+		List<Long> universeCount = new ArrayList<>();
+		List<Long> surplusCount = new ArrayList<>();
+		/*
+		 * Set volunteer List for Active child BC which was not added to Active Parent
+		 * BC
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchEmployees()Set volunteer List for Active child BC which was not added to Active Parent Bc");
+		Set<BusinessCaseEntity> childBcEntityListRs = childBcEntityList.stream().distinct().collect(Collectors.toSet());
+		childBcEntityListRs.forEach(child -> {
+			Set<BcEmployeeEntity> bcEmplList = new HashSet<>();
+			universeCount.add(child.getUniverse());
+			surplusCount.add(Long.parseLong(child.getSurplusCount()));
+
+			if (volunteerFilter.getSeveranceStatus() != null
+					&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+				bcEmplList = child.getBcEmployeeEntityList().parallelStream().filter(
+						employee -> volunteerFilter.getSeveranceStatus().contains(employee.getSeveranceStatus()))
+						.collect(Collectors.toSet());
+			} else {
+				bcEmplList = child.getBcEmployeeEntityList().parallelStream().filter(employee -> employee
+						.getSeveranceStatus() != null
+						&& (employee.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O)))
+						.collect(Collectors.toSet());
+			}
+
+			if (!StringUtils.isBlank(volunteerFilter.getEmpIdOrName())) {
+				bcEmplList = bcEmplList.parallelStream()
+						.filter(employee -> (StringUtils.isEmpty(volunteerFilter.getEmpIdOrName()) ? true
+								: StringUtils.containsIgnoreCase(employee.getEnterpriseId(),
+										volunteerFilter.getEmpIdOrName())
+										|| StringUtils.containsIgnoreCase(
+												(employee.getLegalLastName() + ", " + employee.getLegalFirstName()),
+												volunteerFilter.getEmpIdOrName())))
+						.collect(Collectors.toSet());
+			}
+
+			// union filter added -- need to optimize code later
+
+			if (volunteerFilter.getUnion() != null && CollectionUtils.isNotEmpty(volunteerFilter.getUnion())) {
+				bcEmplList = bcEmplList.parallelStream()
+						.filter(employee -> volunteerFilter.getUnion().contains(employee.getUnionLocal()))
+						.collect(Collectors.toSet());
+			}
+			// end
+
+			Set<String> eidList = child.getBcEmployeeEntityList().stream().map(BcEmployeeEntity::getEnterpriseId)
+					.collect(Collectors.toSet());
+			List<EmployeeSummaryEntity> emplDetails = getEmployeeDetails(eidList);
+			Map<String, EmployeeSummaryEntity> groupAllBcByEid = new HashMap<>();
+			emplDetails.forEach(e -> {
+				groupAllBcByEid.put(e.getEnterpriseId(), e);
+			});
+			bcEmplList.forEach(empl -> {
+				EmployeeSummaryEntity empldetail = groupAllBcByEid.get(empl.getEnterpriseId());
+				if (empldetail != null) {
+					volunteerList.add(VolunteerList.builder().enterpriseId(empl.getEnterpriseId())
+							.employeeName(empldetail.getEmployeeName()).firstName(empldetail.getFirstName())
+							.lastName(empldetail.getLastName())
+							.seniorityDate(LocalDateTime.parse(empldetail.getSeniorityDate()))
+							.continuousServiceDate(LocalDateTime.parse(empldetail.getContinuousServiceDate()))
+							.businessCaseNo(empl.getBusinessCaseEntity() == null ? null
+									: empl.getBusinessCaseEntity().getBusinessCaseNumber())
+							.planCode(empl.getBusinessCaseEntity().getPlanCodeEntity().getPlanCode())
+							.businessCaseNoPc(empl.getBusinessCaseEntity().getPsBusinessCaseNumber())
+							.universe(child.getUniverse()).surplus(Long.parseLong(child.getSurplusCount()))
+							.businessCaseNo(empl.getBusinessCaseEntity().getBusinessCaseNumber()).isParent(false)
+							.bcStatus(empl.getBusinessCaseEntity().getStatus())
+							.CBA(empl.getCollectiveAgreementDescription()).union(empl.getUnionLocal())
+							.day1SeveranceStatus(empl.getDay1SeveranceStatus()).statusCode(empl.getSeveranceStatus())
+							.volNotificationStatusSent(empl.getVolNotificationStatus())
+							.volNotificationTimestamp(empl.getVolNotificationDate()).build());
+				}
+			});
+
+		});
+
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchVolunteerBc() method Grouping by parent BC");
+		if (CollectionUtils.isNotEmpty(parentBcEntityList)) {
+			Map<ParentBusinessCaseEntity, List<BusinessCaseEntity>> groupByBcEntity = childParentEntityList.stream()
+					.collect(Collectors.groupingBy(ChildParentEntity::getParentBusinessCaseEntity,
+							Collectors.mapping(ChildParentEntity::getBusinessCaseEntity, Collectors.toList())));
+
+			/*
+			 * Set volunteer List for Active Parent BC
+			 */
+			LOGGER.info(
+					"Inside VolunteerManagementServiceImpl class searchEmployees()Set volunteer List for Active Parent BC");
+			Set<ParentBusinessCaseEntity> parentBcEntityListRs = parentBcEntityList.stream().distinct()
+					.collect(Collectors.toSet());
+			parentBcEntityListRs.forEach(p -> {
+				List<BusinessCaseEntity> childBcs = groupByBcEntity.get(p);
+				universeCount.add(parentBusinessCaseRepository.getUniverseCount(p.getParentId()));
+				List<String> surplusList = childBcs.stream().map(BusinessCaseEntity::getSurplusCount)
+						.collect(Collectors.toList());
+				Long surplus = (long) 0;
+				for (String s : surplusList) {
+					if(!StringUtils.isBlank(s))
+					surplus += Long.parseLong(s);
+				}
+				if (p.getSurplusCount() == null) {
+					surplusCount.add(surplus);
+				} else {
+					surplusCount.add(Long.parseLong(p.getSurplusCount()));
+				}
+				// get child bc added to parent
+				LOGGER.info(
+						"Inside VolunteerManagementServiceImpl class searchEmployees() get child bc added to parent");
+				Set<BusinessCaseEntity> bcList = new HashSet<>();
+				p.getChildParentList().forEach(cp -> {
+					bcList.add(cp.getBusinessCaseEntity());
+				});
+				/*
+				 * directly added employees
+				 */
+				LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() directly added employees");
+				Set<BcEmployeeEntity> bcEmplList = new HashSet<>();
+				// filter applied
+				LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() filter applied");
+
+				if (volunteerFilter.getSeveranceStatus() != null
+						&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+					bcEmplList = p.getBcEmployeeEntityList().parallelStream().filter(
+							employee -> volunteerFilter.getSeveranceStatus().contains(employee.getSeveranceStatus()))
+							.collect(Collectors.toSet());
+				} else {
+					bcEmplList = p.getBcEmployeeEntityList().parallelStream().filter(employee -> employee
+							.getSeveranceStatus() != null
+							&& (employee.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+									|| employee.getSeveranceStatus()
+											.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+									|| employee.getSeveranceStatus()
+											.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD)
+									|| employee.getSeveranceStatus()
+											.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O)))
+							.collect(Collectors.toSet());
+				}
+				for (BusinessCaseEntity bc : bcList) {
+					if (volunteerFilter.getSeveranceStatus() != null
+							&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+						bcEmplList.addAll(bc
+								.getBcEmployeeEntityList().parallelStream().filter(employee -> volunteerFilter
+										.getSeveranceStatus().contains(employee.getSeveranceStatus()))
+								.collect(Collectors.toSet()));
+					} else {
+						bcEmplList.addAll(bc.getBcEmployeeEntityList().parallelStream()
+								.filter(employee -> employee.getSeveranceStatus() != null && (employee
+										.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+										|| employee.getSeveranceStatus()
+												.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+										|| employee.getSeveranceStatus()
+												.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD)
+										|| employee.getSeveranceStatus()
+												.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O)))
+								.collect(Collectors.toSet()));
+					}
+
+					if (!StringUtils.isBlank(volunteerFilter.getEmpIdOrName())) {
+						bcEmplList = bcEmplList.parallelStream()
+								.filter(employee -> (StringUtils.isEmpty(volunteerFilter.getEmpIdOrName()) ? true
+										: StringUtils.containsIgnoreCase(employee.getEnterpriseId(),
+												volunteerFilter.getEmpIdOrName())
+												|| StringUtils.containsIgnoreCase(
+														(employee.getLegalLastName() + ", "
+																+ employee.getLegalFirstName()),
+														volunteerFilter.getEmpIdOrName())))
+								.collect(Collectors.toSet());
+					}
+
+					// union filter added -- need to optimize code later
+
+					if (volunteerFilter.getUnion() != null && CollectionUtils.isNotEmpty(volunteerFilter.getUnion())) {
+						bcEmplList = bcEmplList.parallelStream()
+								.filter(employee -> volunteerFilter.getUnion().contains(employee.getUnionLocal()))
+								.collect(Collectors.toSet());
+					}
+					// end
+
+					Set<String> eidList = bcEmplList.stream().map(BcEmployeeEntity::getEnterpriseId)
+							.collect(Collectors.toSet());
+					List<EmployeeSummaryEntity> emplDetails = getEmployeeDetails(eidList);
+					Map<String, EmployeeSummaryEntity> groupAllBcByEid = new HashMap<>();
+					emplDetails.forEach(e -> {
+						groupAllBcByEid.put(e.getEnterpriseId(), e);
+					});
+					bcEmplList.forEach(empl -> {
+						EmployeeSummaryEntity empldetail = groupAllBcByEid.get(empl.getEnterpriseId());
+						if (empldetail != null) {
+							volunteerList.add(VolunteerList.builder().enterpriseId(empl.getEnterpriseId())
+									.employeeName(empldetail.getEmployeeName()).firstName(empldetail.getFirstName())
+									.lastName(empldetail.getLastName())
+									.seniorityDate(LocalDateTime.parse(empldetail.getSeniorityDate()))
+									.continuousServiceDate(LocalDateTime.parse(empldetail.getContinuousServiceDate()))
+									.businessCaseNoPc(p.getParentBusinessCaseNumber())
+									.planCode(p.getPlanCodeEntity().getPlanCode()).bcStatus(p.getStatus())
+									.businessCaseNo(p.getParentId()).isParent(true)
+									.universe(parentBusinessCaseRepository.getUniverseCount(p.getParentId()))
+									.surplus(p.getSurplusCount() == null ? 0 : Long.parseLong(p.getSurplusCount()))
+									.childBusinessCaseNo(empl.getBusinessCaseEntity() == null ? null
+											: empl.getBusinessCaseEntity().getBusinessCaseNumber())
+									.CBA(empl.getCollectiveAgreementDescription()).union(empl.getUnionLocal())
+									.statusCode(empl.getSeveranceStatus())
+									.volNotificationStatusSent(empl.getVolNotificationStatus())
+									.volNotificationTimestamp(empl.getVolNotificationDate()).build());
+						}
+					});
+				}
+
+			});
+		}
+
+		/*
+		 * set filter details
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() set filter details");
+		List<String> unionList = volunteerList.parallelStream()
+				.filter(employee -> !StringUtils.isEmpty(employee.getUnion()))
+				.sorted(Comparator.comparing(VolunteerList::getUnion)).map(VolunteerList::getUnion).distinct()
+				.collect(Collectors.toList());
+		List<String> cbaList = volunteerList.parallelStream()
+				.filter(employee -> !StringUtils.isEmpty(employee.getCBA()))
+				.sorted(Comparator.comparing(VolunteerList::getCBA)).map(VolunteerList::getCBA).distinct()
+				.collect(Collectors.toList());
+		/*
+		 * Pagination details
+		 */
+		List<VolunteerList> response = volunteerList.stream().distinct().collect(Collectors.toList());
+		Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+		int start = (int) pageable.getOffset();
+		int end = Math.min((start + pageable.getPageSize()), response.size());
+		if (StringUtils.equals(volunteerFilter.getSort(), "businessCaseNoPc")) {
+			Comparator<VolunteerList> defaultCompare = Comparator.comparing(VolunteerList::getPlanCode)
+					.thenComparing(VolunteerList::getBusinessCaseNo).thenComparing(VolunteerList::getSeniorityDate);
+			response.sort(defaultCompare);
+		}
+		// IVD-85917 Default sorting on seniority date was having inconsistent sorting
+		// due to same date so adding second comparison point
+		else if (StringUtils.equals(volunteerFilter.getSort(), "continuousServiceDate")) {
+			Comparator<VolunteerList> defaultCompare = Comparator.comparing(VolunteerList::getContinuousServiceDate)
+					.thenComparing(VolunteerList::getEnterpriseId).thenComparing(VolunteerList::getBusinessCaseNo);
+			response.sort(defaultCompare);
+		} else
+			response.sort(sortingVolunteerOptions.get(volunteerFilter.getSort()));
+		if ("desc".equals(volunteerFilter.getOrder()))
+			Collections.reverse(response);
+
+		Page<VolunteerList> volunteerListRs = new PageImpl<>(response.subList(start, end), pageable, response.size());
+		List<String> bcList = response.stream().filter(employee -> !StringUtils.isEmpty(employee.getBusinessCaseNoPc()))
+				.sorted(Comparator.comparing(VolunteerList::getPlanCode)
+						.thenComparing(VolunteerList::getBusinessCaseNo))
+				.map(VolunteerList::getBusinessCaseNoPc).distinct().collect(Collectors.toList());
+		long volunteerCount = response.stream()
+				.filter(employee -> employee.getStatusCode().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+						|| employee.getStatusCode().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+						|| employee.getStatusCode().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD))
+				.count();
+		long overSubcribedCount = response.stream()
+				.filter(employee -> employee.getStatusCode() != null
+						&& employee.getStatusCode().equalsIgnoreCase(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O))
+				.count();
+		/*
+		 * set status for UI
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() set status for UI");
+		response.forEach(v -> {
+			switch (v.getStatusCode()) {
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_V);
+				break;
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_O);
+				break;
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VA);
+				break;
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VD);
+				break;
+			default:
+				break;
+			}
+		});
+		Set<String> severanceStatusList = response.stream()
+				.filter(employee -> !StringUtils.isEmpty(employee.getStatusCode())).map(VolunteerList::getStatusCode)
+				.collect(Collectors.toSet());
+//		if (CollectionUtils.isNotEmpty(response)) {
+		/*
+		 * set universe and surplus count
+		 */
+//			Map<String, Long> universe = new HashMap<>();
+//			response.forEach(r -> universe.put(r.getBusinessCaseNoPc(), r.getUniverse()));
+//			bcList.forEach(u -> universeCount.add(universe.get(u)));
+//			Map<String, Long> surplus = new HashMap<>();
+//			response.forEach(r -> surplus.put(r.getBusinessCaseNoPc(), r.getSurplus()));
+//			bcList.forEach(u -> surplusCount.add(surplus.get(u)));
+//		}
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() method end");
+		return VolunteerListResponse.builder().volunteerList(volunteerListRs.getContent()).cbaList(cbaList)
+				.bcList(bcList).unionList(unionList).severanceStatusList(severanceStatusList)
+				.volunteerCount(volunteerCount).overSubscribe(overSubcribedCount)
+				.universe(universeCount.stream().mapToLong(Long::intValue).sum())
+				.surPlus(surplusCount.stream().mapToLong(Long::longValue).sum())
+				.numberOfElements(volunteerListRs.getNumberOfElements())
+				.currentPageNumber(volunteerListRs.getPageable().getPageNumber() + 1)
+				.totalElements(volunteerListRs.getTotalElements()).pageSize(volunteerListRs.getPageable().getPageSize())
+				.totalPages(volunteerListRs.getTotalPages()).build();
+	}
+
+	private List<EmployeeSummaryEntity> getEmployeeDetails(Set<String> enterpriseIdList) {
+
+		LOGGER.info("Inside VolunteerManagementServiceImpl class getEmployeeDetails() method start");
+		HttpEntity<MultiValueMap<String, String>> request = getRequest();
+
+		StringBuilder eidList = new StringBuilder();
+
+		enterpriseIdList.stream().forEach(eid -> {
+			if (eidList.length() > 0) {
+				eidList.append(",");
+			}
+			eidList.append(eid);
+		});
+
+		String requestURL = hcmURL + ManagementBusinessCaseConstant.WD_EMPLOYEE_SUMMARY_VW_ENTERPRISE_ID_IN + eidList
+				+ ManagementBusinessCaseConstant.CLOSING_BRACKET + "&order=seniority_date.asc.nullslast";
+
+		ResponseEntity<String> responseEntity = proxyRestTemplate.exchange(requestURL, HttpMethod.GET, request,
+				String.class);
+		Gson gson = new Gson();
+
+		EmployeeSummaryEntity[] response = gson.fromJson(responseEntity.getBody(), EmployeeSummaryEntity[].class);
+
+		LOGGER.info("Inside VolunteerManagementServiceImpl class getEmployeeDetails() method end");
+		return Arrays.asList(response);
+	}
+
+	private HttpEntity<MultiValueMap<String, String>> getRequest() {
+
+		LOGGER.info("Inside VolunteerManagementServiceImpl class getRequest() method start");
+		HttpHeaders rheaders = new HttpHeaders();
+		rheaders.setContentType(MediaType.APPLICATION_JSON);
+
+		List<MediaType> acceptableMediaTypes = new ArrayList<MediaType>();
+		acceptableMediaTypes.add(new MediaType("*"));
+
+		rheaders.setAccept(acceptableMediaTypes);
+		rheaders.add("Authorization", "Bearer " + jwtHelper.getJWT());
+		rheaders.add("Content-Profile", "public");
+
+		MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+
+		HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, rheaders);
+		LOGGER.info("Inside VolunteerManagementServiceImpl class getRequest() method end");
+		return request;
+	}
+
+	private List<BusinessCaseEntity> findBcBasedOnRole(String role, String loggedInUser,
+			VolunteerManagementFilter volunteerListFilter) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class findBcBasedOnRole() method start");
+		Filters filters = Filters.builder().build();
+		filters.setIsStatistics(false);
+		filters.setRole(role);
+		filters.setLoggedInUser(loggedInUser);
+		filters.setStatusList(Arrays.asList("Active"));
+
+		if (volunteerListFilter != null) {
+			if (volunteerListFilter.getStartDateOfVolunteerPeriod() != null) {
+				filters.setStartDateOfVolunteerPeriodDate(
+						volunteerListFilter.getStartDateOfVolunteerPeriod().toLocalDate());
+			}
+			if (volunteerListFilter.getEndDateOfVolunteerPeriod() != null) {
+				filters.setEndDateOfVolunteerPeriodDate(
+						volunteerListFilter.getEndDateOfVolunteerPeriod().toLocalDate());
+			}
+			if (!StringUtils.isEmpty(volunteerListFilter.getPlanCode())) {
+				filters.setPlanCode(volunteerListFilter.getPlanCode());
+			}
+			if (!CollectionUtils.isEmpty(volunteerListFilter.getBusinessCaseNumber())) {
+				filters.setBusinessCaseNoList(volunteerListFilter.getBusinessCaseNumber());
+			}
+			if (!CollectionUtils.isEmpty(volunteerListFilter.getCba())) {
+				filters.setCbaList(volunteerListFilter.getCba());
+			}
+
+			if (!CollectionUtils.isEmpty(volunteerListFilter.getUnion())) {
+				filters.setUnionList(volunteerListFilter.getUnion());
+			}
+
+		}
+		LOGGER.info("Inside VolunteerManagementServiceImpl class findBcBasedOnRole() method end");
+
+		return repo.filters(filters);
+	}
+
+//	public VolunteerBcResponse searchVolunteerBc1(VolunteerManagementFilter volunteerListFilter, String loggedInUser,
+//			String role, int pageNumber, int pageSize) {
+//
+//		VolunteerBcResponse businessCaseResponse = new VolunteerBcResponse();
+//		UniverseDetailsCount universeDetails = new UniverseDetailsCount();
+//		List<BusinessCaseEntity> businessCaseEntities = findBcBasedOnRole(role, loggedInUser, volunteerListFilter);
+//		List<Long> surplusCount = new ArrayList<>();
+//		List<Long> universeCount = new ArrayList<>();
+//		List<Long> vOverallCount = new ArrayList<>();
+//		List<Long> vAOverallCount = new ArrayList<>();
+//		List<Long> overSubscribeOverallCount = new ArrayList<>();
+//		List<Long> childBcList = businessCaseEntities.stream().map(e -> e.getBusinessCaseNumber())
+//				.collect(Collectors.toList());
+////		List<String> parentBcList = businessCaseEntities.stream()
+////				.filter(employee -> !StringUtils.isEmpty(employee.getActiveParentBusinesstCaseNumber()))
+////				.map(e -> e.getActiveParentBusinesstCaseNumber()).distinct().collect(Collectors.toList());
+//
+//		List<Long> parentBcList= new ArrayList<>();
+//		//List<String> parentBcList = childParentRepository.getAllActiveParentBc(childBcList);
+//		
+//		List<BcEmployeeEntity> bcList = bcEmployeeRepository.getListOfEmployeesByParentBcNumberList(childBcList,
+//				parentBcList);
+//		Long vCount = bcList.stream()
+//				.filter(employee -> employee.getSeveranceStatus() != null && !employee.getSeveranceStatus().equals("E"))
+//				.count();
+//		Long vACount = bcList.stream().filter(employee -> employee.getSeveranceStatus() != null
+//				&& employee.getSeveranceStatus().equalsIgnoreCase("VA")).count();
+//		Long overSubscribeCount = bcList.stream().filter(employee -> employee.getSeveranceStatus() != null
+//				&& employee.getSeveranceStatus().equalsIgnoreCase("O")).count();
+//		vOverallCount.add(vCount);
+//		vAOverallCount.add(vACount);
+//		universeCount.add((long) bcList.size());
+//		overSubscribeOverallCount.add(overSubscribeCount);
+////		businessCaseEntities.stream().forEach(bcEntity -> {
+////			if (bcEntity.getActiveParentBusinesstCaseNumber() == null) {
+////				surplusCount.add(Long.parseLong(bcEntity.getSurplusCount()));
+////			}
+////		});
+////		if (parentBcList != null) {
+////			parentBcList.stream().forEach(entity -> {
+////				ParentBusinessCaseEntity parentEntity = parentBusinessCaseRepository
+////						.findByParentBusinessCaseNumber(entity);
+////				surplusCount.add(Long.parseLong(parentEntity.getSurplusCount()));
+////			});
+////		}
+//		List<VolunteerBusinessCase> volunteerBCList = new ArrayList<>();
+//		Set<String> parentBCList = new HashSet<>();
+////		businessCaseEntities.forEach(childBc -> {
+////			if (childBc.getActiveParentBusinesstCaseNumber() == null) {
+////				VolunteerBusinessCase volunteerBC = new VolunteerBusinessCase();
+////				volunteerBC.setBusinessCaseNumber(childBc.getBusinessCaseNumber());
+////				volunteerBC.setPsBusinessCaseNumber(childBc.getPsBusinessCaseNumber());
+////				volunteerBC.setSurplusCount(Long.parseLong(childBc.getSurplusCount()));
+////				volunteerBC.setUnion(childBc.getUnion());
+////				volunteerBC.setFaa(childBc.getFaa());
+////				volunteerBC.setSurplusJobTitle(businessCaseEntities.parallelStream()
+////						.map(bcEntity -> bcEntity.getJobTitle()).collect(Collectors.toSet()));
+////				volunteerBC.setCba(childBc.getBargainingUnit());
+////				volunteerBC.setStartDateOfVolunteerPeriod(childBc.getStartDateOfVolunteerPeriod());
+////				volunteerBC.setEndOfVolunteerPeriod(childBc.getEndOfVolunteerPeriod());
+////				List<BcEmployeeEntity> bc = bcEmployeeRepository.findByBusinessCaseNo(childBc.getBusinessCaseNumber());
+////				volunteerBC.setVolunteerCount(bc.stream().filter(
+////						employee -> employee.getSeveranceStatus() != null && !employee.getSeveranceStatus().equals("E"))
+////						.count());
+////				volunteerBC.setOversubscribedCount(bc.stream().filter(employee -> employee.getSeveranceStatus() != null
+////						&& employee.getSeveranceStatus().equalsIgnoreCase("O")).count());
+////				volunteerBC.setNonVolunteerCount(
+////						bc.stream().filter(employee -> employee.getSeveranceStatus().equalsIgnoreCase("E")).count());
+////				volunteerBC.setUniverse((long) bc.size());
+////				volunteerBC.setParentBusinessCase(false);
+////				volunteerBCList.add(volunteerBC);
+////			} else {
+////				parentBCList.add(childBc.getActiveParentBusinesstCaseNumber());
+////			}
+////		});
+//
+//		parentBCList.forEach(parentBc -> {
+//			List<Long> integers = new ArrayList<>();
+//			List<Long> numbers = new ArrayList<>();
+//			List<Long> volunteerCount = new ArrayList<>();
+//			List<Long> nonVolunteerCount = new ArrayList<>();
+//			List<Long> oversubscribedCount = new ArrayList<>();
+//			List<BusinessCaseEntity> associateBcEntities = associateBcRepository
+//					.findActiveByParentBusinessCaseNumber(parentBc);
+//			ParentBusinessCaseEntity parentEntity = parentBusinessCaseRepository
+//					.findByParentBusinessCaseNumber(parentBc);
+//			VolunteerBusinessCase volunteerBC = new VolunteerBusinessCase();
+//			volunteerBC.setPsBusinessCaseNumber(parentBc);
+//
+//			List<Long> childBc = associateBcEntities.stream().map(e -> e.getBusinessCaseNumber())
+//					.collect(Collectors.toList());
+////			List<String> parentBC = associateBcEntities.stream()
+////					.filter(employee -> !StringUtils.isEmpty(employee.getActiveParentBusinesstCaseNumber()))
+////					.map(e -> e.getActiveParentBusinesstCaseNumber()).distinct().collect(Collectors.toList());
+//
+//			List<Long> parentBC= new ArrayList<>();
+//			//List<String> parentBC = childParentRepository.getAllActiveParentBc(childBcList);
+//			
+//			List<BcEmployeeEntity> bc = bcEmployeeRepository.getListOfEmployeesByParentBcNumberList(childBc, parentBC);
+//			Long volCount = bc.stream().filter(
+//					employee -> employee.getSeveranceStatus() != null && !employee.getSeveranceStatus().equals("E"))
+//					.count();
+//			Long odCount = bc.stream().filter(employee -> employee.getSeveranceStatus() != null
+//					&& employee.getSeveranceStatus().equalsIgnoreCase("O")).count();
+//			Long nVCount = bc.stream().filter(employee -> employee.getSeveranceStatus().equalsIgnoreCase("E")).count();
+//			volunteerCount.add(volCount);
+//			nonVolunteerCount.add(nVCount);
+//			oversubscribedCount.add(odCount);
+//
+//			numbers.add((long) bc.size());
+//			associateBcEntities.stream().forEach(id -> {
+//				volunteerBC.setUnion(id.getUnion());
+//				volunteerBC.setFaa(id.getFaa());
+//				volunteerBC.setSurplusJobTitle(associateBcEntities.parallelStream()
+//						.map(bcEntity -> bcEntity.getJobTitle()).collect(Collectors.toSet()));
+//				volunteerBC.setCba(id.getBargainingUnit());
+//				volunteerBC.setStartDateOfVolunteerPeriod(id.getStartDateOfVolunteerPeriod());
+//				volunteerBC.setEndOfVolunteerPeriod(id.getEndOfVolunteerPeriod());
+//				volunteerBC.setParentBusinessCase(true);
+//			});
+//			integers.add(Long.parseLong(parentEntity.getSurplusCount()));
+//			volunteerBC.setSurplusCount(integers.stream().mapToLong(Long::intValue).sum());
+//			volunteerBC.setUniverse(numbers.stream().mapToLong(Long::intValue).sum());
+//			volunteerBC.setVolunteerCount(volunteerCount.stream().mapToLong(Long::intValue).sum());
+//			volunteerBC.setOversubscribedCount(oversubscribedCount.stream().mapToLong(Long::intValue).sum());
+//			volunteerBC.setNonVolunteerCount(nonVolunteerCount.stream().mapToLong(Long::intValue).sum());
+//			volunteerBCList.add(volunteerBC);
+//
+//		});
+//
+//		Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+//		int start = (int) pageable.getOffset();
+//		int end = Math.min((start + pageable.getPageSize()), volunteerBCList.size());
+//		Page<VolunteerBusinessCase> volunteerListPages = new PageImpl<>(volunteerBCList.subList(start, end), pageable,
+//				volunteerBCList.size());
+//		businessCaseResponse.setVolunteerBusinessCaseList(volunteerListPages.getContent());
+//		businessCaseResponse.setNumberOfElements(volunteerListPages.getNumberOfElements());
+//		businessCaseResponse.setCurrentPageNumber(volunteerListPages.getPageable().getPageNumber() + 1);
+//		businessCaseResponse.setTotalElements(volunteerListPages.getTotalElements());
+//		businessCaseResponse.setPageSize(volunteerListPages.getPageable().getPageSize());
+//		businessCaseResponse.setTotalPages(volunteerListPages.getTotalPages());
+//		universeDetails.setSurplusCount(surplusCount.stream().mapToLong(Long::intValue).sum());
+//		universeDetails.setUniverseCount(universeCount.stream().mapToLong(Long::intValue).sum());
+//		universeDetails.setVolunteerAcceptedCount(vAOverallCount.stream().mapToLong(Long::intValue).sum());
+//		universeDetails.setVolunteerCount(vOverallCount.stream().mapToLong(Long::intValue).sum());
+//		universeDetails.setTotalOverSubscribe(overSubscribeOverallCount.stream().mapToLong(Long::intValue).sum());
+//		businessCaseResponse.setUniverseDetails(universeDetails);
+//		businessCaseResponse.setVolunteerBusinessCaseList(volunteerBCList);
+//		return businessCaseResponse;
+//	}
+
+	@Override
+	public VolunteerBcResponse searchVolunteerBc(VolunteerManagementFilter volunteerFilter, int pageNumber,
+			int pageSize) {
+
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchVolunteerBc() method start");
+		List<VolunteerBusinessCase> volunteerBusinessCaseList = new ArrayList<>();
+
+		// get parent BC numbers based on filter criteria
+		List<Long> bcId = new ArrayList<>();
+		List<Long> bcIdParent = new ArrayList<>();
+
+		List<ParentBusinessCaseEntity> parentBcEntityLists = parentBusinessCaseRepository
+				.findAll(volunteerManagementSpecification.getVolunteerParentBcFilter(volunteerFilter));
+
+        if(parentBcEntityLists.isEmpty()){
+            parentBcEntityLists = parentBusinessCaseRepository
+                    .findAll(volunteerManagementSpecification.getDirectVolunteerParentBcFilter(volunteerFilter));
+        }
+
+		volunteerFilter.setParentBusinessCaseNumber(parentBcEntityLists.stream()
+				.map(ParentBusinessCaseEntity::getParentBusinessCaseNumber).collect(Collectors.toList()));
+
+		if (CollectionUtils.isNotEmpty(volunteerFilter.getParentBusinessCaseNumber())) {
+			List<BusinessCaseEntity> bcEntityListforParent = associateBcRepository
+					.findAll(volunteerManagementSpecification.getVolunteerBcFilterForParent(volunteerFilter));
+
+			List<ChildParentEntity> InParent = new ArrayList<>();
+			bcEntityListforParent.forEach(e -> {
+				InParent.addAll(e.getChildParentList());
+			});
+			InParent.forEach(p -> {
+				if (p.getParentStatus().equalsIgnoreCase("Active")) {
+					bcId.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+					bcIdParent.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+				}
+			});
+		}
+
+		/*
+		 * get all BCs
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchVolunteerBc() method get all BCs from associateBcRepository");
+		List<BusinessCaseEntity> bcEntityList = associateBcRepository
+				.findAll(volunteerManagementSpecification.getVolunteerBcFilter(volunteerFilter));
+
+		/*
+		 * get child BC which is not added to parent
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchVolunteerBc() method get child BC which is not added to parent");
+		List<ChildParentEntity> notInParent = new ArrayList<>();
+		bcEntityList.forEach(e -> {
+			notInParent.addAll(e.getChildParentList());
+		});
+		notInParent.forEach(p -> {
+			if (p.getParentStatus().equalsIgnoreCase("Active")) {
+				bcId.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+			}
+		});
+		volunteerFilter.setBcNumber(bcId.stream().distinct().collect(Collectors.toList()));
+		List<BusinessCaseEntity> childBcEntityList = associateBcRepository
+				.findAll(volunteerManagementSpecification.getVolunteerBcFilter(volunteerFilter));
+		/*
+		 * get parent Bc
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchVolunteerBc() method getting parent Bc");
+		List<ParentBusinessCaseEntity> parentBcEntityList = new ArrayList<>();
+		List<ChildParentEntity> childParentEntityList = new ArrayList<>();
+		if (CollectionUtils.isNotEmpty(bcIdParent)) {
+			List<Long> parentId = associateBcRepository.getParentBc(volunteerFilter.getBusinessCaseNumber());
+			childParentEntityList = childParentRepository
+					.findAll(volunteerManagementSpecification.getChildParentFilter(bcIdParent, parentId));
+			childParentEntityList.forEach(cp -> {
+				if (cp.getParentStatus().equalsIgnoreCase("Active")) {
+					parentBcEntityList.add(cp.getParentBusinessCaseEntity());
+				}
+				if (cp.getBusinessCaseEntity().getStatus().equalsIgnoreCase("Active")
+						&& !cp.getParentStatus().equalsIgnoreCase("Active") && !volunteerFilter.getBcNumber()
+								.contains(cp.getBusinessCaseEntity().getBusinessCaseNumber())) {
+					childBcEntityList.add(cp.getBusinessCaseEntity());
+				}
+			});
+		}
+
+		if (CollectionUtils.isNotEmpty(parentBcEntityLists) && (CollectionUtils.isNotEmpty(volunteerFilter.getUnion())
+				|| CollectionUtils.isNotEmpty(volunteerFilter.getCba()))) {
+			Set<Long> alreadyIncludedParentIds = parentBcEntityList.stream()
+					.map(ParentBusinessCaseEntity::getParentId).collect(Collectors.toSet());
+			for (ParentBusinessCaseEntity candidate : parentBcEntityLists) {
+				if (alreadyIncludedParentIds.contains(candidate.getParentId())) {
+					continue;
+				}
+				boolean hasDirectMatch = CollectionUtils.isNotEmpty(candidate.getBcEmployeeEntityList())
+						&& candidate.getBcEmployeeEntityList().stream()
+								.anyMatch(emp -> (CollectionUtils.isEmpty(volunteerFilter.getUnion())
+										|| volunteerFilter.getUnion().contains(emp.getUnionLocal()))
+										&& (CollectionUtils.isEmpty(volunteerFilter.getCba())
+												|| volunteerFilter.getCba()
+														.contains(emp.getCollectiveAgreementDescription())));
+				if (hasDirectMatch) {
+					parentBcEntityList.add(candidate);
+					alreadyIncludedParentIds.add(candidate.getParentId());
+				}
+			}
+		}
+		/*
+		 * Set volunteer List for Active child BC which was not added to Active Parent
+		 * BC
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchVolunteerBc() method Set volunteer List for Active child BC which was not added to Active Parent Bc");
+		if (CollectionUtils.isNotEmpty(childBcEntityList)) {
+			List<BusinessCaseEntity> childBcEntityListRs = childBcEntityList.stream().distinct()
+					.collect(Collectors.toList());
+			childBcEntityListRs.forEach(child -> {
+				Long volunteerCount = child.getBcEmployeeEntityList().stream().filter(employee -> employee
+						.getSeveranceStatus() != null
+						&& (employee.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD)))
+						.count();
+				Long overSubcribedCount = child.getBcEmployeeEntityList().stream()
+						.filter(employee -> employee.getSeveranceStatus() != null && StringUtils.equalsAny(
+								employee.getSeveranceStatus(), AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O,
+								AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+								AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD))
+						.count();
+				Long nonVolunteerCount = child.getBcEmployeeEntityList().stream()
+						.filter(employee -> employee.getSeveranceStatus() != null && (employee.getSeveranceStatus()
+								.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_E)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_D)))
+						.count();
+				volunteerBusinessCaseList.add(VolunteerBusinessCase.builder()
+						.businessCaseNumber(child.getBusinessCaseNumber())
+						.psBusinessCaseNumber(child.getPsBusinessCaseNumber()).parentBusinessCase(false)
+						.surplusJobTitle(new HashSet<>(Arrays.asList(child.getJobTitle()))).faa(child.getFaa())
+						.cba(child.getBargainingUnit()).union(child.getUnion())
+						.startDateOfVolunteerPeriod(child.getStartDateOfVolunteerPeriod())
+						.endOfVolunteerPeriod(child.getEndOfVolunteerPeriod())
+						.universe(
+								associateBcRepository.getUniverCountByBusinessCaseNumber(child.getBusinessCaseNumber()))
+						.surplusCount(Long.parseLong(child.getSurplusCount())).volunteerCount(volunteerCount)
+						.nonVolunteerCount(nonVolunteerCount).oversubscribedCount(overSubcribedCount)
+						.terminationDate(child.getTerminationDate()).build());
+			});
+		}
+		/*
+		 * Group by parent BC
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchVolunteerBc() method Grouping by parent BC");
+		if (CollectionUtils.isNotEmpty(parentBcEntityList)) {
+			Map<ParentBusinessCaseEntity, List<BusinessCaseEntity>> groupByBcEntity = childParentEntityList.stream()
+					.collect(Collectors.groupingBy(ChildParentEntity::getParentBusinessCaseEntity,
+							Collectors.mapping(ChildParentEntity::getBusinessCaseEntity, Collectors.toList())));
+
+			/*
+			 * Set Volunteer for Active Parent BC
+			 */
+			LOGGER.info(
+					"Inside VolunteerManagementServiceImpl class searchEmployees() getting  Setting Volunteer for Active Parent BC");
+			parentBcEntityList.stream().distinct().forEach(parent -> {
+				List<BusinessCaseEntity> childBcs = groupByBcEntity.getOrDefault(parent, Collections.emptyList());
+				List<BcEmployeeEntity> bcEmpl = bcEmployeeRepository
+						.getEmplByBcId(Arrays.asList(parent.getParentBusinessCaseNumber()));
+				Long volunteerCount = bcEmpl.stream().filter(employee -> employee.getSeveranceStatus() != null
+						&& (employee.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD)))
+						.count();
+				Long overSubcribedCount = bcEmpl.stream()
+						.filter(employee -> employee.getSeveranceStatus() != null && StringUtils.equalsAny(
+								employee.getSeveranceStatus(), AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O,
+								AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+								AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD))
+						.count();
+				Long nonVolunteerCount = bcEmpl.stream().filter(employee -> employee.getSeveranceStatus() != null
+						&& (employee.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_E)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_D)))
+						.count();
+				// calculating surpluse count of parent business case case
+				Long surplusCount = null;
+				List<String> surplusList = childBcs.stream().map(BusinessCaseEntity::getSurplusCount)
+						.collect(Collectors.toList());
+				Long surplus = (long) 0;
+				for (String s : surplusList) {
+					if(!StringUtils.isBlank(s))
+					surplus += Long.parseLong(s);
+				}
+//				if (parent.getSurplusCount() == null) {
+//					surplusCount = surplus;
+//				} else {
+//					surplusCount = Long.parseLong(parent.getSurplusCount());
+//				} 
+				//CPS-79321 - surplus count issue in dashboard
+				surplusCount = surplus;
+
+				volunteerBusinessCaseList.add(VolunteerBusinessCase.builder()
+						.psBusinessCaseNumber(parent.getParentBusinessCaseNumber()).parentBusinessCase(true)
+						.surplusJobTitle(
+								childBcs.stream().map(BusinessCaseEntity::getJobTitle).collect(Collectors.toSet()))
+						.faa(childBcs.isEmpty() ? null : childBcs.get(0).getFaa())
+						.cba(childBcs.isEmpty() ? null : childBcs.get(0).getBargainingUnit())
+						.union(childBcs.isEmpty() ? null : childBcs.get(0).getUnion())
+						.startDateOfVolunteerPeriod(parent.getStartDateOfVolunteerPeriod())
+						.endOfVolunteerPeriod(parent.getEndDateOfVolunteerPeriod())
+						.universe(parentBusinessCaseRepository.getUniverseCount(parent.getParentId()))
+						.terminationDate(childBcs.isEmpty() ? null : childBcs.get(0).getTerminationDate())
+						.surplusCount(surplusCount)
+						.volunteerCount(volunteerCount).nonVolunteerCount(nonVolunteerCount)
+						.oversubscribedCount(overSubcribedCount).build());
+			});
+		}
+
+		// IVD-86420 Separating the unions for UI to consume
+//		Set<String> unionList = volunteerBusinessCaseList.parallelStream()
+//				.filter(employee -> !StringUtils.isEmpty(employee.getUnion())).map(VolunteerBusinessCase::getUnion)
+//				.collect(Collectors.toSet());
+		Set<String> unionList = new TreeSet<>();
+		for (VolunteerBusinessCase bc : volunteerBusinessCaseList) {
+			if (!StringUtils.isEmpty(bc.getUnion())) {
+				String mergedUnion = bc.getUnion();
+				String[] splitUnion = mergedUnion.split(",");
+				for (String union : splitUnion) {
+					unionList.add(union);
+				}
+			}
+		}
+		Set<String> cbaList = volunteerBusinessCaseList.parallelStream()
+				.filter(employee -> !StringUtils.isEmpty(employee.getCba())).map(VolunteerBusinessCase::getCba)
+				.collect(Collectors.toSet());
+
+		/*
+		 * Pagination for Volunteer List
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchVolunteerBc() method Pagination for Volunteer List");
+		Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+		int start = (int) pageable.getOffset();
+		int end = Math.min((start + pageable.getPageSize()), volunteerBusinessCaseList.size());
+		if ("surplusJobTitle".equals(volunteerFilter.getSort())) {
+			VolunteerBusinessCaseJobTitleComparator jobTitleComparator = new VolunteerBusinessCaseJobTitleComparator();
+			Collections.sort(volunteerBusinessCaseList, jobTitleComparator);
+		} else if ("faa".equals(volunteerFilter.getSort())) {
+			VolunteerBusinessCaseFaaComparator faaComparator = new VolunteerBusinessCaseFaaComparator();
+			Collections.sort(volunteerBusinessCaseList, faaComparator);
+		} else
+			volunteerBusinessCaseList.sort(sortingOptions.get(volunteerFilter.getSort()));
+		if ("desc".equals(volunteerFilter.getOrder()))
+			Collections.reverse(volunteerBusinessCaseList);
+
+		Page<VolunteerBusinessCase> volunteerListRs = new PageImpl<>(volunteerBusinessCaseList.subList(start, end),
+				pageable, volunteerBusinessCaseList.size());
+		/*
+		 * Set universe count details
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchVolunteerBc() method Setting universe count details");
+		List<Long> surplus = new ArrayList<>();
+		List<Long> universe = new ArrayList<>();
+		List<Long> volunteer = new ArrayList<>();
+		List<Long> overSubcribed = new ArrayList<>();
+		volunteerBusinessCaseList.forEach(v -> {
+			surplus.add(v.getSurplusCount() == null ? 0L : v.getSurplusCount());
+			universe.add(v.getUniverse() == null ? 0L : v.getUniverse());
+			volunteer.add(v.getVolunteerCount() == null ? 0L : v.getVolunteerCount());
+			overSubcribed.add(v.getOversubscribedCount() == null ? 0L : v.getOversubscribedCount());
+		});
+		UniverseDetailsCount universeDetails = UniverseDetailsCount.builder()
+				.surplusCount(surplus.stream().mapToLong(Long::intValue).sum())
+				.universeCount(universe.stream().mapToLong(Long::intValue).sum())
+				.volunteerCount(volunteer.stream().mapToLong(Long::intValue).sum())
+				.totalOverSubscribe(overSubcribed.stream().mapToLong(Long::intValue).sum()).build();
+		/*
+		 * return Response
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchVolunteerBc() method end");
+		return VolunteerBcResponse.builder().volunteerBusinessCaseList(volunteerListRs.getContent())
+				.numberOfElements(volunteerListRs.getNumberOfElements())
+				.currentPageNumber(volunteerListRs.getPageable().getPageNumber() + 1)
+				.totalElements(volunteerListRs.getTotalElements()).pageSize(volunteerListRs.getPageable().getPageSize())
+				.totalPages(volunteerListRs.getTotalPages()).universeDetails(universeDetails)
+				.volunteerFilters(VolunteerFilterRs.builder().cba(cbaList).union(unionList)
+						// IVD-84280--CBA & Union filter
+						// .cba(volunteerListRs.stream().map(VolunteerBusinessCase::getCba).collect(Collectors.toSet()))
+						// .union(volunteerListRs.stream().map(VolunteerBusinessCase::getUnion)
+						// .collect(Collectors.toSet()))
+						.build())
+				.build();
+	}
+
+	@Override
+	public String action(VolunteerNotificationRq volunteerNotificationRq, String loggedInUser) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class action() method start");
+		updateVolunteerStatus(volunteerNotificationRq, loggedInUser, volunteerNotificationRq.isVolunteerAccepted(),
+				loggedInUser);
+		LOGGER.info("Inside VolunteerManagementServiceImpl class action() method end");
+		return "Successfully Updated";
+	}
+
+	private void updateVolunteerStatus(VolunteerNotificationRq volunteerNotificationRq, String loggedInUser,
+			boolean isVolunteerAccepted, final String modifiedBy) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class updateVolunteerStatus() method start");
+		Map<String, List<String>> groupByBc = null;
+		long startTime1 = System.currentTimeMillis();
+		// update volunteer based on volunteer filter
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class updateVolunteerStatus() method update volunteer based on volunteer filter");
+		if (volunteerNotificationRq.isSelectedAll()) {
+			volunteerNotificationRq.getVolunteerManagementFilter().setSort("seniorityDate");
+			volunteerNotificationRq.getVolunteerManagementFilter().setOrder("desc");
+			VolunteerListResponse volunteerListResponse = searchEmployees(
+					volunteerNotificationRq.getVolunteerManagementFilter());
+			if (volunteerListResponse != null && volunteerListResponse.getVolunteerList() != null) {
+				if (!CollectionUtils.isEmpty(volunteerNotificationRq.getExclusionEnterprisesIds())) {
+					groupByBc = volunteerListResponse.getVolunteerList().stream()
+							.filter(e -> !StringUtils.equalsAnyIgnoreCase(e.getEnterpriseId(),
+									volunteerNotificationRq.getExclusionEnterprisesIds().toArray(String[]::new)))
+							.collect(Collectors.groupingBy(VolunteerList::getBusinessCaseNoPc,
+									Collectors.mapping(VolunteerList::getEnterpriseId, Collectors.toList())));
+				} else {
+					groupByBc = volunteerListResponse.getVolunteerList().stream()
+							.collect(Collectors.groupingBy(VolunteerList::getBusinessCaseNoPc,
+									Collectors.mapping(VolunteerList::getEnterpriseId, Collectors.toList())));
+				}
+			}
+		}
+		// update volunteer based on employee list
+		else {
+			LOGGER.info(
+					"Inside VolunteerManagementServiceImpl class updateVolunteerStatus() method update volunteer based on employee list");
+			groupByBc = volunteerNotificationRq.getVolunteerManagementRq().stream()
+					.collect(Collectors.groupingBy(VolunteerManagementRq::getBcId,
+							Collectors.mapping(VolunteerManagementRq::getEid, Collectors.toList())));
+		}
+		long endTime1 = System.currentTimeMillis();
+		log.info("selectAll took time of " + (endTime1 - startTime1) + " ms");
+		long startTime = System.currentTimeMillis();
+		List<BcEmployeeEntityForVolunteerManagement> bcEmployeeEntities = new ArrayList<>();
+		groupByBc.forEach((k, v) -> {
+			bcEmployeeEntities.addAll(bcEmployeeForVolunteerManagementRepository.getEmplByBcIdAndEidsV2(k, v));
+			// bcEmployeeRepository.updateStatus(k, v, sevStatus, modifiedBy);
+		});
+		Map<BcEmployeeEntityForVolunteerManagement, List<EmployeeAuditRequest>> employeeAuditMap = new HashMap<>();
+
+		bcEmployeeEntities.forEach(e -> {
+			String sevStatus = null;
+			if (StringUtils.equalsAnyIgnoreCase(e.getSeveranceStatus(), "O", "OA", "OD")) {
+				if (isVolunteerAccepted) {
+					sevStatus = AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA;
+				} else {
+					sevStatus = AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD;
+				}
+			} else {
+				if (isVolunteerAccepted) {
+					sevStatus = AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA;
+				} else {
+					sevStatus = AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD;
+				}
+			}
+			List<EmployeeAuditRequest> employeeAuditList = new ArrayList<>();
+			if (!StringUtils.equalsIgnoreCase(e.getSeveranceStatus(), sevStatus)) {
+				employeeAuditList.add(EmployeeAuditRequest.builder().fieldName("Severance Status")
+						.oldValue(e.getSeveranceStatus() == null ? null : e.getSeveranceStatus())
+						.newValue(sevStatus == null ? null : sevStatus).build());
+			}
+			
+			  if (StringUtils.equalsAnyIgnoreCase(sevStatus, 
+					AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+					AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+					AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+					AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD) && (e.getEmployeePortalAccess() != null && !e.getEmployeePortalAccess())) {
+				e.setEmployeePortalAccess(true);
+				employeeAuditList.add(EmployeeAuditRequest.builder().fieldName("Employee Portal").oldValue(null)
+						.newValue("Enabled").build());
+			}
+			e.setLastModifiedBy(modifiedBy);
+			e.setSeveranceStatus(sevStatus);
+			e.setOperation("UPDATE");
+			e.setLastUpdatedDate(LocalDateTime.now());
+			employeeAuditMap.put(e, employeeAuditList);
+
+		});
+		LOGGER.info("Inside VolunteerManagementServiceImpl class updateVolunteerStatus() method end");
+		businessCaseAuditHelper.persistVolunteerEmployeeAudit(loggedInUser, employeeAuditMap);
+		bcEmployeeForVolunteerManagementRepository.saveAll(bcEmployeeEntities);
+		long endTime = System.currentTimeMillis();
+		log.info("update took time of " + (endTime - startTime) + " ms");
+	}
+
+    private List<String> normalizeSeveranceStatus(VolunteerManagementFilter volunteerFilter) {
+        if (volunteerFilter == null || CollectionUtils.isEmpty(volunteerFilter.getSeveranceStatus())) {
+            return Collections.emptyList();
+        }
+        List<String> codes = volunteerFilter.getSeveranceStatus().stream()
+                .filter(StringUtils::isNotBlank)
+                .map(v -> StringUtils.substringBefore(v, " - ").trim())
+                .filter(code -> StringUtils.equalsAny(code,
+                        AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V,
+                        AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+                        AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+                        AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O,
+                        AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+                        AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD))
+                .distinct().collect(Collectors.toList());
+        volunteerFilter.setSeveranceStatus(codes);
+        return codes;
+    }
+
+
+    private List<BcEmployeeEntity> getEmployeesBySelectAllFilter(VolunteerNotificationRq volunteerNotificationRq) {
+        VolunteerManagementFilter filter = volunteerNotificationRq.getVolunteerManagementFilter();
+        List<String> statusCodes = normalizeSeveranceStatus(filter);
+
+        VolunteerBcResponse volunteerBcResponse = searchVolunteerBc(filter, 1, 10000);
+        List<BcEmployeeEntity> employeeList = new ArrayList<>();
+        if (volunteerBcResponse != null && CollectionUtils.isNotEmpty(volunteerBcResponse.getVolunteerBusinessCaseList())) {
+            List<String> bcNumbers = volunteerBcResponse.getVolunteerBusinessCaseList().stream()
+                    .filter(bc -> CollectionUtils.isEmpty(volunteerNotificationRq.getExclusionBusinesscases())
+                            || !StringUtils.equalsAnyIgnoreCase(bc.getPsBusinessCaseNumber(),
+                                    volunteerNotificationRq.getExclusionBusinesscases().toArray(String[]::new)))
+                    .map(VolunteerBusinessCase::getPsBusinessCaseNumber).collect(Collectors.toList());
+            if (CollectionUtils.isNotEmpty(bcNumbers)) {
+                employeeList = bcEmployeeRepository.getEmplByBcIdExcludingInactiveEmpls(bcNumbers);
+            }
+        }
+
+        if (CollectionUtils.isNotEmpty(statusCodes)) {
+            employeeList = employeeList.stream().filter(e -> statusCodes.contains(e.getSeveranceStatus()))
+                    .collect(Collectors.toList());
+        }
+
+        if (CollectionUtils.isNotEmpty(filter.getUnion())) {
+            employeeList = employeeList.stream()
+                    .filter(e -> filter.getUnion().contains(e.getUnionLocal()))
+                    .collect(Collectors.toList());
+        }
+
+        if (CollectionUtils.isNotEmpty(filter.getCba())) {
+            employeeList = employeeList.stream()
+                    .filter(e -> filter.getCba().contains(e.getCollectiveAgreementDescription()))
+                    .collect(Collectors.toList());
+        }
+        if (StringUtils.isNotBlank(filter.getEmpIdOrName())) {
+            String empIdOrName = filter.getEmpIdOrName();
+            employeeList = employeeList.stream()
+                    .filter(e -> StringUtils.containsIgnoreCase(e.getEnterpriseId(), empIdOrName)
+                            || StringUtils.containsIgnoreCase(
+                                    StringUtils.trimToEmpty(e.getLegalLastName()) + ", "
+                                            + StringUtils.trimToEmpty(e.getLegalFirstName()),
+                                    empIdOrName))
+                    .collect(Collectors.toList());
+        }
+        return employeeList;
+    }
+
+	@Override
+	@Async
+	public void sendNotification(VolunteerNotificationRq volunteerNotificationRq, String loggedInUser) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class sendNotification() method start");
+		List<BusinessCaseAuditRequest> businesscaseAuditRequests = new ArrayList<>();
+		List<BcEmployeeEntity> employeeList = new ArrayList<>();
+		List<String> eidList = new ArrayList<>();
+		NotificationRs emailResponse = null;
+		Map<String, List<String>> groupByBc = null;
+		// send notification based on volunteer filter
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class sendNotification() method send notification based on volunteer filter");
+		if (volunteerNotificationRq.getVolunteerManagementFilter() != null && volunteerNotificationRq.isSelectedAll()) {
+			employeeList = getEmployeesBySelectAllFilter(volunteerNotificationRq);
+			eidList = employeeList.stream().map(BcEmployeeEntity::getEnterpriseId).collect(Collectors.toList());
+
+		} else if (CollectionUtils.isNotEmpty(volunteerNotificationRq.getBcIds())
+				&& volunteerNotificationRq.isSelectedAll()) {
+			LOGGER.info(
+					"Inside VolunteerManagementServiceImpl class sendNotification() method send notification based on SelectAll Employeelevel list");
+			employeeList = repo.getEmployeeList(volunteerNotificationRq);
+
+        }
+		// send notification based on businesscase list
+		else if (CollectionUtils.isNotEmpty(volunteerNotificationRq.getBcIds())) {
+			LOGGER.info(
+					"Inside VolunteerManagementServiceImpl class sendNotification() method send notification based on businesscase list");
+			employeeList = bcEmployeeRepository.getEmplByBcIdExcludingInactiveEmpls(volunteerNotificationRq.getBcIds());
+			eidList = employeeList.stream().map(BcEmployeeEntity::getEnterpriseId).collect(Collectors.toList());
+
+		} else {
+			groupByBc = volunteerNotificationRq.getVolunteerManagementRq().stream()
+					.collect(Collectors.groupingBy(VolunteerManagementRq::getBcId,
+							Collectors.mapping(VolunteerManagementRq::getEid, Collectors.toList())));
+			for (Map.Entry<String, List<String>> mapElement : groupByBc.entrySet()) {
+				employeeList
+						.addAll(bcEmployeeRepository.getEmplByBcIdAndEids(mapElement.getKey(), mapElement.getValue()));
+				eidList.addAll(mapElement.getValue());
+			}
+
+		}
+		if (CollectionUtils.isEmpty(employeeList)) {
+			//return null;
+		}
+//		Map<String, List<BcEmployeeEntity>> status = null;
+//		int batchSizeDoc = 50;
+//		// Send Email notification
+//		if (volunteerNotificationRq.isVolunteerNotification()) {
+//			LOGGER.info(
+//					"Inside VolunteerManagementServiceImpl class sendNotification() method Send Email notification");
+//
+//			//List<BcEmployeeEntity> employeeBatchList  = new ArrayList<>();
+//			for (int i = 0; i < employeeList.size(); i += batchSizeDoc) {
+//				int end = Math.min(i + batchSizeDoc, employeeList.size());
+//				LOGGER.info("End  {}", end);
+//				List<BcEmployeeEntity> employeeBatchList = employeeList.subList(i, end);
+//
+//				if (!CollectionUtils.isEmpty(volunteerNotificationRq.getExclusionEnterprisesIds())) {
+//					employeeBatchList = employeeBatchList.stream()
+//							.filter(e -> !StringUtils.equalsAnyIgnoreCase(e.getEnterpriseId(),
+//									volunteerNotificationRq.getExclusionEnterprisesIds().toArray(String[]::new)))
+//							.collect(Collectors.toList());
+//
+//				}
+//				status = employeeBatchList.stream()
+//						.collect(Collectors.groupingBy(BcEmployeeEntity::getSeveranceStatus, Collectors.toList()));
+//				for (Map.Entry<String, List<BcEmployeeEntity>> mapElement : status.entrySet()) {
+//					if (StringUtils.equalsAnyIgnoreCase(mapElement.getKey(),
+//							AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+//							AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA)) {
+//						emailResponse = notificationHelper.sendVolunteerNotification(mapElement.getValue(), "Accepted");
+//						updateNotificationStatus(employeeBatchList, volunteerNotificationRq, emailResponse, loggedInUser);
+//					} else if (StringUtils.equalsAnyIgnoreCase(mapElement.getKey(),
+//							AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+//							AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)) {
+//						emailResponse = notificationHelper.sendVolunteerNotification(mapElement.getValue(), "Rejected");
+//						updateNotificationStatus(employeeBatchList, volunteerNotificationRq, emailResponse, loggedInUser);
+//					}
+//				}
+//			}
+//		} else {
+//			LOGGER.info("Else Volunteer Management Service sendNotification() method Send Email notification");
+//			for (int i = 0; i < employeeList.size(); i += batchSizeDoc) {
+//				int end = Math.min(i + batchSizeDoc, employeeList.size());
+//				LOGGER.info("End  {}", end);
+//				List<BcEmployeeEntity> employeeBatchList = employeeList.subList(i, end);
+//				emailResponse = notificationHelper.sendVolunteerNotification(employeeBatchList, null);
+//				updateNotificationStatus(employeeBatchList, volunteerNotificationRq, emailResponse, loggedInUser);
+//			}
+//
+//		}
+//		if (emailResponse == null) {
+//			throw new IllegalArgumentException("Failed to send email notification for employees {}" + eidList);
+//		}
+//
+//
+//
+//
+////		// Update Notification Status
+////		if (volunteerNotificationRq.isVolunteerNotification() && emailResponse != null) {
+////			LOGGER.info(
+////					"Inside VolunteerManagementServiceImpl class sendNotification() method Update Notification Status");
+////			employeeList.forEach(e -> {
+////				// update only if volunteer is accepted or denied
+////				if (StringUtils.equalsAnyIgnoreCase(e.getSeveranceStatus(),
+////						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+////						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+////						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+////						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)) {
+////					List<EmployeeAuditRequest> employeeAuditList = new ArrayList<>();
+////					employeeAuditList.add(EmployeeAuditRequest.builder()
+////							.fieldName(StringUtils.equalsAnyIgnoreCase(e.getSeveranceStatus(),
+////									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+////									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA) ? "Offer Acceptance Sent"
+////											: "Offer Denial Sent")
+////							.oldValue(null).newValue("Yes").build());
+////					employeeAuditList.add(EmployeeAuditRequest.builder()
+////							.fieldName(StringUtils.equalsAnyIgnoreCase(e.getSeveranceStatus(),
+////									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+////									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA) ? "Offer Acceptance Date"
+////											: "Offer Denial Date")
+////							.oldValue(e.getVolNotificationDate() == null ? null
+////									: e.getVolNotificationDate().toLocalDate().format(auditDateFormat))
+////							.newValue(LocalDate.now().format(auditDateFormat)).build());
+////					e.setVolNotificationStatus(true);
+////					e.setVolNotificationDate(LocalDateTime.now());
+////					e.setLastModifiedBy(loggedInUser);
+////					businessCaseAuditHelper.persistEmployeeAudit(loggedInUser, e.getEnterpriseId(),
+////							e.getBusinessCaseEntity() != null ? e.getBusinessCaseEntity().getPsBusinessCaseNumber()
+////									: e.getParentBusinessCaseEntity().getParentBusinessCaseNumber(),
+////							employeeAuditList);
+////				}
+////
+////			});
+////		} else if (emailResponse != null) {
+////			employeeList.forEach(e -> {
+////				List<EmployeeAuditRequest> employeeAuditList = new ArrayList<>();
+////				employeeAuditList.add(EmployeeAuditRequest.builder().fieldName("Offer Notification Sent").oldValue(null)
+////						.newValue("Yes").build());
+////				employeeAuditList.add(EmployeeAuditRequest.builder().fieldName("Offer Notification Date")
+////						.oldValue(e.getOfferNotificationSentDate() == null ? null
+////								: e.getOfferNotificationSentDate().toLocalDate().format(auditDateFormat))
+////						.newValue(LocalDate.now().format(auditDateFormat)).build());
+////				employeeAuditList.add(EmployeeAuditRequest.builder().fieldName("Portal Access").oldValue(null)
+////						.newValue("Enabled").build());
+////				e.setIsOfferNotificationSent(true);
+////				e.setEmployeePortalAccess(true);
+////				e.setOfferNotificationSentDate(LocalDateTime.now());
+////				e.setLastModifiedBy(loggedInUser);
+////				businessCaseAuditHelper
+////						.persistEmployeeAudit(loggedInUser, e.getEnterpriseId(),
+////								e.getBusinessCaseEntity() != null ? e.getBusinessCaseEntity().getPsBusinessCaseNumber()
+////										: e.getParentBusinessCaseEntity().getParentBusinessCaseNumber(),
+////								employeeAuditList);
+////			});
+////		}
+////		bcEmployeeRepository.saveAll(employeeList);
+//		log.info("email status was updated for the Employees : {}", eidList);
+//		LOGGER.info("Inside VolunteerManagementServiceImpl class sendNotification() method  end");
+//		//return "The Offer Email Notification has been successfully sent";
+//	}
+        List<String> failedEids = new ArrayList<>();
+        int batchSizeDoc = 50;
+
+        if (volunteerNotificationRq.isVolunteerNotification()) {
+            LOGGER.info("Inside VolunteerManagementServiceImpl class sendNotification() method Send Email notification");
+
+            for (int i = 0; i < employeeList.size(); i += batchSizeDoc) {
+                int end = Math.min(i + batchSizeDoc, employeeList.size());
+                List<BcEmployeeEntity> employeeBatchList = employeeList.subList(i, end);
+
+                if (!CollectionUtils.isEmpty(volunteerNotificationRq.getExclusionEnterprisesIds())) {
+                    employeeBatchList = employeeBatchList.stream()
+                            .filter(e -> !StringUtils.equalsAnyIgnoreCase(e.getEnterpriseId(),
+                                    volunteerNotificationRq.getExclusionEnterprisesIds().toArray(String[]::new)))
+                            .collect(Collectors.toList());
+                }
+
+                Map<String, List<BcEmployeeEntity>> statusGroups = employeeBatchList.stream()
+                        .collect(Collectors.groupingBy(BcEmployeeEntity::getSeveranceStatus, Collectors.toList()));
+
+                for (Map.Entry<String, List<BcEmployeeEntity>> group : statusGroups.entrySet()) {
+                    String notificationType = null;
+                    if (StringUtils.equalsAnyIgnoreCase(group.getKey(),
+                            AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+                            AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA)) {
+                        notificationType = "Accepted";
+                    } else if (StringUtils.equalsAnyIgnoreCase(group.getKey(),
+                            AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+                            AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)) {
+                        notificationType = "Rejected";
+                    }
+                    if (notificationType == null) {
+                        continue;
+                    }
+                    sendAndUpdate(group.getValue(), notificationType, volunteerNotificationRq, loggedInUser, failedEids);
+                }
+            }
+        } else {
+            LOGGER.info("Else Volunteer Management Service sendNotification() method Send Email notification");
+            for (int i = 0; i < employeeList.size(); i += batchSizeDoc) {
+                int end = Math.min(i + batchSizeDoc, employeeList.size());
+                sendAndUpdate(employeeList.subList(i, end), null, volunteerNotificationRq, loggedInUser, failedEids);
+            }
+        }
+
+        if (!failedEids.isEmpty()) {
+            LOGGER.error("Offer email notification FAILED for employees {} (status not updated)", failedEids);
+        }
+        log.info("email status was updated for the Employees : {}",
+                eidList.stream().filter(e -> !failedEids.contains(e)).collect(Collectors.toList()));
+        LOGGER.info("Inside VolunteerManagementServiceImpl class sendNotification() method  end");
+    }
+
+    private void sendAndUpdate(List<BcEmployeeEntity> employees, String notificationType,
+                               VolunteerNotificationRq volunteerNotificationRq, String loggedInUser, List<String> failedEids) {
+        List<String> eids = employees.stream().map(BcEmployeeEntity::getEnterpriseId).collect(Collectors.toList());
+        try {
+            NotificationRs response = notificationHelper.sendVolunteerNotification(employees, notificationType);
+            if (response != null) {
+                updateNotificationStatus(employees, volunteerNotificationRq, response, loggedInUser);
+            } else {
+                LOGGER.error("Email notification returned no response for employees {}", eids);
+                failedEids.addAll(eids);
+            }
+        } catch (Exception ex) {
+            LOGGER.error("Email notification failed for employees {}", eids, ex);
+            failedEids.addAll(eids);
+        }
+    }
+
+	private void updateNotificationStatus(List<BcEmployeeEntity> employeeList, VolunteerNotificationRq volunteerNotificationRq,
+										  NotificationRs emailResponse, String loggedInUser) {
+		if (volunteerNotificationRq.isVolunteerNotification() && emailResponse != null) {
+			LOGGER.info("Inside VolunteerManagementServiceImpl class updateNotificationStatus() method Update Notification Status");
+			employeeList.forEach(e -> {
+				// update only if volunteer is accepted or denied
+				if (StringUtils.equalsAnyIgnoreCase(e.getSeveranceStatus(),
+						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)) {
+					List<EmployeeAuditRequest> employeeAuditList = new ArrayList<>();
+					employeeAuditList.add(EmployeeAuditRequest.builder()
+							.fieldName(StringUtils.equalsAnyIgnoreCase(e.getSeveranceStatus(),
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA) ? "Offer Acceptance Sent"
+									: "Offer Denial Sent")
+							.oldValue(null).newValue("Yes").build());
+					employeeAuditList.add(EmployeeAuditRequest.builder()
+							.fieldName(StringUtils.equalsAnyIgnoreCase(e.getSeveranceStatus(),
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA) ? "Offer Acceptance Date"
+									: "Offer Denial Date")
+							.oldValue(e.getVolNotificationDate() == null ? null
+									: e.getVolNotificationDate().toLocalDate().format(auditDateFormat))
+							.newValue(LocalDate.now().format(auditDateFormat)).build());
+					e.setVolNotificationStatus(true);
+					e.setVolNotificationDate(LocalDateTime.now());
+					e.setLastModifiedBy(loggedInUser);
+					businessCaseAuditHelper.persistEmployeeAudit(loggedInUser, e.getEnterpriseId(),
+							e.getBusinessCaseEntity() != null ? e.getBusinessCaseEntity().getPsBusinessCaseNumber()
+									: e.getParentBusinessCaseEntity().getParentBusinessCaseNumber(),
+							employeeAuditList);
+				}
+			});
+		} else if (emailResponse != null) {
+			employeeList.forEach(e -> {
+				List<EmployeeAuditRequest> employeeAuditList = new ArrayList<>();
+				employeeAuditList.add(EmployeeAuditRequest.builder().fieldName("Offer Notification Sent").oldValue(null)
+						.newValue("Yes").build());
+				employeeAuditList.add(EmployeeAuditRequest.builder().fieldName("Offer Notification Date")
+						.oldValue(e.getOfferNotificationSentDate() == null ? null
+								: e.getOfferNotificationSentDate().toLocalDate().format(auditDateFormat))
+						.newValue(LocalDate.now().format(auditDateFormat)).build());
+				employeeAuditList.add(EmployeeAuditRequest.builder().fieldName("Portal Access").oldValue(null)
+						.newValue("Enabled").build());
+				e.setIsOfferNotificationSent(true);
+				e.setEmployeePortalAccess(true);
+				e.setOfferNotificationSentDate(LocalDateTime.now());
+				e.setLastModifiedBy(loggedInUser);
+				businessCaseAuditHelper.persistEmployeeAudit(loggedInUser, e.getEnterpriseId(),
+						e.getBusinessCaseEntity() != null ? e.getBusinessCaseEntity().getPsBusinessCaseNumber()
+								: e.getParentBusinessCaseEntity().getParentBusinessCaseNumber(),
+						employeeAuditList);
+			});
+		}
+		bcEmployeeRepository.saveAll(employeeList);
+	}
+
+	@Override
+	public String volunteerEmpl(String bcId, List<String> eids, Boolean isOfferAccepted, String loggedInUser) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class volunteerEmpl() method  start");
+		String status = null;
+		if (isOfferAccepted.equals(true)) {
+			status = "V";
+		} else {
+			status = "E";
+		}
+		final String sevStatus = status;
+		final String modifiedBy = loggedInUser;
+		bcEmployeeRepository.updateStatus(bcId, eids, sevStatus, modifiedBy);
+		List<BcEmployeeEntity> employeeList = bcEmployeeRepository.getEmplByBcId(Arrays.asList(bcId));
+		if (employeeList.isEmpty()) {
+			throw new IllegalArgumentException("Employees are Not found for this BC : " + bcId);
+		}
+		Long volunteerCount = employeeList.stream()
+				.filter(employee -> employee.getSeveranceStatus() != null
+						&& !employee.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_E))
+				.count();
+		ParentBusinessCaseEntity parentBcEntity = parentBusinessCaseRepository.findByParentBcId(bcId);
+		/*
+		 * parent BC overSubscribed implementation
+		 */
+		if (parentBcEntity != null) {
+			Long surplusCount = Long.parseLong(parentBcEntity.getSurplusCount());
+			if (volunteerCount > surplusCount) {
+				Set<String> eidList = employeeList.stream()
+						.filter(e -> e.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+								|| e.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O))
+						.map(BcEmployeeEntity::getEnterpriseId).collect(Collectors.toSet());
+				List<EmployeeSummaryEntity> emplDetails = getEmployeeDetails(eidList);
+				List<EmployeeSummaryEntity> overSubscribed = emplDetails.subList(surplusCount.intValue(),
+						emplDetails.size());
+				List<String> overSubscribedEmplList = overSubscribed.stream()
+						.map(EmployeeSummaryEntity::getEnterpriseId).collect(Collectors.toList());
+				bcEmployeeRepository.updateStatus(parentBcEntity.getParentBusinessCaseNumber(), overSubscribedEmplList,
+						"O", modifiedBy);
+			}
+		} else {
+			/*
+			 * child BC overSubscribed implementation
+			 */
+			BusinessCaseEntity childBcEntity = associateBcRepository.findByChildBusinessCaseNumber(bcId);
+			Long surplusCount = Long.parseLong(childBcEntity.getSurplusCount());
+			if (volunteerCount > surplusCount) {
+				Set<String> eidList = employeeList.stream()
+						.filter(e -> e.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+								|| e.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O))
+						.map(BcEmployeeEntity::getEnterpriseId).collect(Collectors.toSet());
+				List<EmployeeSummaryEntity> emplDetails = getEmployeeDetails(eidList);
+				List<EmployeeSummaryEntity> overSubscribed = emplDetails.subList(surplusCount.intValue(),
+						emplDetails.size());
+				List<String> overSubscribedEmplList = overSubscribed.stream()
+						.map(EmployeeSummaryEntity::getEnterpriseId).collect(Collectors.toList());
+				bcEmployeeRepository.updateStatus(childBcEntity.getPsBusinessCaseNumber(), overSubscribedEmplList, "O",
+						modifiedBy);
+			}
+
+		}
+		LOGGER.info("Inside VolunteerManagementServiceImpl class volunteerEmpl() method  end");
+		return "Severance Status Was Updated Successfully.";
+	}
+
+	@Override
+	public String scheduleNotification(VolunteerNotificationRq volunteerNotificationRq, String loggedInUser) {
+
+		LOGGER.info("Inside VolunteerManagementServiceImpl class sendNotification() method start");
+
+		List<BcEmployeeEntity> employeeList = new ArrayList<>();
+		List<String> eidList = new ArrayList<>();
+		Map<String, List<String>> groupByBc = null;
+		// send notification based on volunteer filter
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class sendNotification() method send notification based on volunteer filter");
+		if (volunteerNotificationRq.getVolunteerManagementFilter() != null && volunteerNotificationRq.isSelectedAll()) {
+			VolunteerBcResponse volunteerListResponse = searchVolunteerBc(
+					volunteerNotificationRq.getVolunteerManagementFilter(), 1, 10000);
+			if (volunteerListResponse != null && volunteerListResponse.getVolunteerBusinessCaseList() != null) {
+				if (!CollectionUtils.isEmpty(volunteerNotificationRq.getExclusionBusinesscases())) {
+					employeeList = bcEmployeeRepository.getEmplByBcIdExcludingInactiveEmpls(
+							volunteerListResponse.getVolunteerBusinessCaseList().stream()
+									.filter(e -> !StringUtils.equalsAnyIgnoreCase(e.getPsBusinessCaseNumber(),
+											volunteerNotificationRq.getExclusionBusinesscases().toArray(String[]::new)))
+									.map(VolunteerBusinessCase::getPsBusinessCaseNumber).collect(Collectors.toList()));
+				} else {
+					employeeList = bcEmployeeRepository.getEmplByBcIdExcludingInactiveEmpls(
+							volunteerListResponse.getVolunteerBusinessCaseList().stream()
+									.map(VolunteerBusinessCase::getPsBusinessCaseNumber).collect(Collectors.toList()));
+
+				}
+			}
+		} else if (CollectionUtils.isNotEmpty(volunteerNotificationRq.getBcIds())
+				&& volunteerNotificationRq.isSelectedAll()) {
+			LOGGER.info(
+					"Inside VolunteerManagementServiceImpl class sendNotification() method send notification based on SelectAll Employeelevel list");
+			employeeList = repo.getEmployeeList(volunteerNotificationRq);
+
+		}
+		// send notification based on businesscase list
+		else if (CollectionUtils.isNotEmpty(volunteerNotificationRq.getBcIds())) {
+			LOGGER.info(
+					"Inside VolunteerManagementServiceImpl class sheduleNotification() method shedule notification based on businesscase list");
+			employeeList = bcEmployeeRepository.getEmplByBcIdExcludingInactiveEmpls(volunteerNotificationRq.getBcIds());
+			if (!CollectionUtils.isEmpty(volunteerNotificationRq.getExclusionEnterprisesIds())) {
+				eidList = employeeList.stream()
+						.filter(e -> !StringUtils.equalsAnyIgnoreCase(e.getEnterpriseId(),
+								volunteerNotificationRq.getExclusionEnterprisesIds().toArray(String[]::new)))
+						.map(BcEmployeeEntity::getEnterpriseId).collect(Collectors.toList());
+			} else {
+				eidList = employeeList.stream().map(BcEmployeeEntity::getEnterpriseId).collect(Collectors.toList());
+			}
+		} else {
+			groupByBc = volunteerNotificationRq.getVolunteerManagementRq().stream()
+					.collect(Collectors.groupingBy(VolunteerManagementRq::getBcId,
+							Collectors.mapping(VolunteerManagementRq::getEid, Collectors.toList())));
+			for (Map.Entry<String, List<String>> mapElement : groupByBc.entrySet()) {
+				employeeList
+						.addAll(bcEmployeeRepository.getEmplByBcIdAndEids(mapElement.getKey(), mapElement.getValue()));
+				eidList.addAll(mapElement.getValue());
+			}
+
+		}
+		if (CollectionUtils.isEmpty(employeeList)) {
+			return null;
+		}
+		String loginUserName = businessCaseAuditHelper.getDisplayName(loggedInUser);
+		String newOfferNotification = volunteerNotificationRq.getOfferNotification() != null ?
+				volunteerNotificationRq.getOfferNotification().format(auditDateFormat) : null;
+
+        ExecutorService executorService = Executors.newFixedThreadPool(5);
+		if (volunteerNotificationRq.getOfferNotification() != null) {
+			employeeList.forEach(e -> {
+				executorService.submit(() -> {
+					e.setScheduledOfferDate(volunteerNotificationRq.getOfferNotification());
+					e.setLastModifiedBy(loggedInUser);
+					e.setScheduledNotificationFlg(true);
+
+					BcEmployeeNoteAuditEntity employeeAuditNoteEntity = BcEmployeeNoteAuditEntity.builder()
+							.businessCaseNo(e.getBusinessCaseEntity() != null ? e.getBusinessCaseEntity().getPsBusinessCaseNumber()
+									: e.getParentBusinessCaseEntity().getParentBusinessCaseNumber()).enterpriseId( e.getEnterpriseId())
+							.createdUpdatedByTimestamp(LocalDateTime.now(ZoneOffset.UTC)).createdUpdatedByEid(loggedInUser)
+							.createdUpdatedBy(loginUserName).notes("Schedule Offer Notification is set to Yes. Schedule Offer Notification Date is set to "+ newOfferNotification).build();
+					bcEmployeeNoteRepository.save(employeeAuditNoteEntity);
+				});
+
+			});
+			executorService.shutdown();
+			try {
+				executorService.awaitTermination(1, TimeUnit.MINUTES);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			bcEmployeeRepository.saveAll(employeeList);
+			log.info("email status was updated for the Employees : {}", eidList);
+			return "The Offer Email Notification has been successfully scheduled";
+
+		} else {
+			employeeList.forEach(e -> {
+				executorService.submit(() -> {
+					e.setScheduledOfferDate(volunteerNotificationRq.getOfferNotification());
+					e.setLastModifiedBy(loggedInUser);
+					e.setScheduledNotificationFlg(false);
+					BcEmployeeNoteAuditEntity employeeAuditNoteEntity = BcEmployeeNoteAuditEntity.builder()
+							.businessCaseNo(e.getBusinessCaseEntity() != null ? e.getBusinessCaseEntity().getPsBusinessCaseNumber()
+									: e.getParentBusinessCaseEntity().getParentBusinessCaseNumber()).enterpriseId( e.getEnterpriseId())
+							.createdUpdatedByTimestamp(LocalDateTime.now(ZoneOffset.UTC)).createdUpdatedByEid(loggedInUser)
+							.createdUpdatedBy(loginUserName).notes("Schedule Offer Notification is set to No.").build();
+					bcEmployeeNoteRepository.save(employeeAuditNoteEntity);
+				});
+			});
+			executorService.shutdown();
+			try {
+				executorService.awaitTermination(1, TimeUnit.MINUTES);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			bcEmployeeRepository.saveAll(employeeList);
+			log.info("email status was updated for the Employees : {}", eidList);
+			return "The Offer Email Notification has been successfully cancelled";
+		}
+	}
+
+	@Override
+	public VolunteerListResponse searchEmployeesV2(VolunteerManagementFilter volunteerFilter, int pageNumber,
+			int pageSize) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployeesV2() method start");
+		if (volunteerFilter.getSeveranceStatus() != null) {
+			List<String> status = new ArrayList<>();
+			volunteerFilter.getSeveranceStatus().forEach(v -> {
+				switch (v) {
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_V:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_O:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VA:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VD:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_OA:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_OD:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD);
+					break;
+				default:
+					break;
+				}
+			});
+			volunteerFilter.getSeveranceStatus().clear();
+			volunteerFilter.setSeveranceStatus(status);
+		}
+
+		List<VolunteerList> volunteerList = new ArrayList<>();
+		/*
+		 * get all BCs
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() getting all BCs");
+		List<Long> bcId = new ArrayList<>();
+		List<Long> bcIdParent = new ArrayList<>();
+
+		List<ParentBusinessCaseEntity> parentBcEntityLists = parentBusinessCaseRepository
+				.findAll(volunteerManagementSpecification.getVolunteerParentBcFilter(volunteerFilter));
+//		LOGGER.info("Volunteer Find All End 2 " +parentBcEntityLists2.size());
+//		List<ParentBusinessCaseEntity> parentBcEntityLists = parentBusinessCaseRepository
+//		.findByAllTemp(volunteerFilter.getPlanCode(),volunteerFilter.getStartDateOfVolunteerPeriod(),volunteerFilter.getEndDateOfVolunteerPeriod(),
+//				"Active",volunteerFilter.getBusinessCaseNumber()); 
+		LOGGER.info("Volunteer Find All End " +parentBcEntityLists.size());
+		
+		volunteerFilter.setParentBusinessCaseNumber(parentBcEntityLists.stream()
+				.map(ParentBusinessCaseEntity::getParentBusinessCaseNumber).collect(Collectors.toList()));
+		if (CollectionUtils.isNotEmpty(volunteerFilter.getParentBusinessCaseNumber())) {
+			List<BusinessCaseEntity> bcEntityListforParent = associateBcRepository
+					.findAll(volunteerManagementSpecification.getVolunteerEmployeeFilterForParent(volunteerFilter));
+
+			List<ChildParentEntity> InParent = new ArrayList<>();
+			bcEntityListforParent.forEach(e -> {
+				InParent.addAll(e.getChildParentList());
+			});
+			InParent.forEach(p -> {
+				if (p.getParentStatus().equalsIgnoreCase("Active")) {
+					bcId.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+					bcIdParent.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+				}
+			});
+		}
+
+		/*
+		 * get all BCs
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class  searchEmployees() gettingmethod get all BCs from associateBcRepository");
+		List<BusinessCaseEntity> bcEntityList = associateBcRepository
+				.findAll(volunteerManagementSpecification.getVolunteerEmployeeFilter(volunteerFilter));
+
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchEmployees() getting child BC which is not added to parent");
+		List<ChildParentEntity> notInParent = new ArrayList<>();
+		bcEntityList.forEach(e -> {
+			notInParent.addAll(e.getChildParentList());
+		});
+		notInParent.forEach(p -> {
+			if (p.getParentStatus().equalsIgnoreCase("Active")) {
+				bcId.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+			}
+		});
+		volunteerFilter.setBcNumber(bcId.stream().distinct().collect(Collectors.toList()));
+		List<BusinessCaseEntity> childBcEntityList = associateBcRepository
+				.findAll(volunteerManagementSpecification.getVolunteerEmployeeFilter(volunteerFilter));
+
+		/*
+		 * get parent Bc
+		 */
+		
+		Set<BcEmployeeEntity> bcListTemp = new HashSet<>();
+		
+		
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() getting parent Bc");
+		List<ParentBusinessCaseEntity> parentBcEntityList = new ArrayList<>();
+		List<ChildParentEntity> childParentEntityList = new ArrayList<>();
+		if (CollectionUtils.isNotEmpty(bcIdParent)) {
+			List<Long> parentId = associateBcRepository.getParentBc(volunteerFilter.getBusinessCaseNumber());
+			childParentEntityList = childParentRepository
+					.findAll(volunteerManagementSpecification.getChildParentFilter(bcIdParent, parentId));
+			childParentEntityList.forEach(cp -> {
+				if (cp.getParentStatus().equalsIgnoreCase("Active")) {
+					parentBcEntityList.add(cp.getParentBusinessCaseEntity());
+				}
+				if (cp.getBusinessCaseEntity().getStatus().equalsIgnoreCase("Active")
+						&& !cp.getParentStatus().equalsIgnoreCase("Active") && !volunteerFilter.getBcNumber()
+								.contains(cp.getBusinessCaseEntity().getBusinessCaseNumber())) {
+					childBcEntityList.add(cp.getBusinessCaseEntity());
+				}
+			});
+		}
+			
+		List<Long> universeCount = new ArrayList<>();
+		List<Long> surplusCount = new ArrayList<>();
+		/*
+		 * Set volunteer List for Active child BC which was not added to Active Parent
+		 * BC
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchEmployees()Set volunteer List for Active child BC which was not added to Active Parent Bc");
+		Set<BusinessCaseEntity> childBcEntityListRs = childBcEntityList.stream().distinct().collect(Collectors.toSet());
+		childBcEntityListRs.forEach(child -> {
+			//Set<BcEmployeeEntity> bcEmplList = new HashSet<>();
+			universeCount.add(child.getUniverse());
+			surplusCount.add(Long.parseLong(child.getSurplusCount()));
+			
+			child.getBcEmployeeEntityList().stream().filter(employee -> employee.getSeveranceStatus() != null
+				&& (StringUtils.equalsAny(employee.getSeveranceStatus(),
+				AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V,
+				AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+				AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+				AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O,
+				AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+				AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD))).collect(Collectors.toList()).forEach(childEmployee->{
+				volunteerList.add(VolunteerList.builder().enterpriseId(childEmployee.getEnterpriseId())
+						//.employeeName(childEmployee.getDisplayName())
+						.firstName(childEmployee.getLegalFirstName())
+						.lastName(childEmployee.getLegalLastName()).seniorityDate(childEmployee.getSeniorityDate())
+						.continuousServiceDate(childEmployee.getCalculatedServiceDt())
+						.businessCaseNo(childEmployee.getBusinessCaseEntity() == null ? null
+								: childEmployee.getBusinessCaseEntity().getBusinessCaseNumber())
+						.planCode(childEmployee.getBusinessCaseEntity().getPlanCodeEntity().getPlanCode())
+						.businessCaseNoPc(childEmployee.getBusinessCaseEntity().getPsBusinessCaseNumber())
+						.universe(childEmployee.getBusinessCaseEntity().getUniverse()).surplus(Long.parseLong(childEmployee.getBusinessCaseEntity().getSurplusCount()))
+						.businessCaseNo(childEmployee.getBusinessCaseEntity().getBusinessCaseNumber()).isParent(false)
+						.bcStatus(childEmployee.getBusinessCaseEntity().getStatus())
+						.CBA(childEmployee.getCollectiveAgreementDescription()).union(childEmployee.getUnionLocal())
+						.day1SeveranceStatus(childEmployee.getDay1SeveranceStatus()).statusCode(childEmployee.getSeveranceStatus())
+						.volNotificationStatusSent(childEmployee.getVolNotificationStatus())
+						.volNotificationTimestamp(childEmployee.getVolNotificationDate()).build());
+			});
+
+		//	bcListTemp.addAll(bcEmplList);	
+			
+		});
+
+		/*
+		 * Apply the child-BC filters once over the fully-populated list instead of
+		 * re-filtering the accumulating list on every child iteration. Because each
+		 * filter re-reads the entire list and replaces it, only the final pass over
+		 * the complete list is significant, so running them once here is equivalent
+		 * while avoiding the O(children x employees) blow-up.
+		 */
+		List<VolunteerList> volunteerListTemp = new ArrayList<>();
+		if (volunteerFilter.getSeveranceStatus() != null
+				&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+			volunteerListTemp = volunteerList.parallelStream().filter(employee -> volunteerFilter.getSeveranceStatus().contains(employee.getStatusCode()))
+					.collect(Collectors.toList());
+			volunteerList.clear();
+			volunteerList.addAll(volunteerListTemp);
+			volunteerListTemp.clear();
+		} 
+		else {
+			//bcEmplList.addAll(child.getBcEmployeeEntityList());
+			volunteerListTemp = volunteerList.parallelStream()
+					.filter(employee -> employee.getStatusCode() != null
+							&& (StringUtils.equalsAny(employee.getStatusCode(),
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V,
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O,
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+									AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)))
+					.collect(Collectors.toList());
+			if(!volunteerListTemp.isEmpty()) {
+				volunteerList.clear();
+				volunteerList.addAll(volunteerListTemp);
+				volunteerListTemp.clear();
+			}
+		}
+
+		// Explicit filters are strict (no fallback to the unfiltered list) so the grid
+		// matches the employees that select-all Accept/Deny updates.
+		if (!StringUtils.isBlank(volunteerFilter.getEmpIdOrName())) {
+			volunteerListTemp = volunteerList.parallelStream()
+					.filter(employee -> StringUtils.containsIgnoreCase(employee.getEnterpriseId(),
+									volunteerFilter.getEmpIdOrName())
+									|| StringUtils.containsIgnoreCase(
+											(employee.getLastName() + ", " + employee.getFirstName()),
+											volunteerFilter.getEmpIdOrName()))
+					.collect(Collectors.toList());
+			volunteerList.clear();
+			volunteerList.addAll(volunteerListTemp);
+			volunteerListTemp.clear();
+		}
+		// union filter added -- need to optimize code later
+		
+		if (volunteerFilter.getUnion() != null && CollectionUtils.isNotEmpty(volunteerFilter.getUnion())) {
+			volunteerListTemp = volunteerList.parallelStream()
+					.filter(employee -> volunteerFilter.getUnion().contains(employee.getUnion()))
+					.collect(Collectors.toList());
+			volunteerList.clear();
+			volunteerList.addAll(volunteerListTemp);
+			volunteerListTemp.clear();
+		}
+		if (volunteerFilter.getCba() != null && CollectionUtils.isNotEmpty(volunteerFilter.getCba())) {
+			volunteerListTemp = volunteerList.parallelStream()
+					.filter(employee -> volunteerFilter.getCba().contains(employee.getCBA()))
+					.collect(Collectors.toList());
+			volunteerList.clear();
+			volunteerList.addAll(volunteerListTemp);
+			volunteerListTemp.clear();
+		}
+			// end
+
+		LOGGER.info(
+				"Outside Child case Loop" +volunteerList.size());
+		
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchVolunteerBc() method Grouping by parent BC");
+		if (CollectionUtils.isNotEmpty(parentBcEntityList)) {
+			Map<ParentBusinessCaseEntity, List<BusinessCaseEntity>> groupByBcEntity = childParentEntityList.stream()
+					.collect(Collectors.groupingBy(ChildParentEntity::getParentBusinessCaseEntity,
+							Collectors.mapping(ChildParentEntity::getBusinessCaseEntity, Collectors.toList())));
+
+			/*
+			 * Set volunteer List for Active Parent BC
+			 */
+			LOGGER.info(
+					"Inside VolunteerManagementServiceImpl class searchEmployees()Set volunteer List for Active Parent BC");
+			
+			Set<ParentBusinessCaseEntity> parentBcEntityListRs = parentBcEntityList.stream().distinct()
+					.collect(Collectors.toSet());
+			parentBcEntityListRs.forEach(p -> {
+				List<BusinessCaseEntity> childBcs = groupByBcEntity.get(p);
+				universeCount.add(parentBusinessCaseRepository.getUniverseCount(p.getParentId()));
+				List<String> surplusList = childBcs.stream().map(BusinessCaseEntity::getSurplusCount)
+						.collect(Collectors.toList());
+				Long surplus = (long) 0;
+				for (String s : surplusList) {
+					if(!StringUtils.isBlank(s))
+					surplus += Long.parseLong(s);
+				}
+				if (p.getSurplusCount() == null) {
+					surplusCount.add(surplus);
+				} else {
+					surplusCount.add(Long.parseLong(p.getSurplusCount()));
+				}
+				LOGGER.info(
+						"Inside VolunteerManagementServiceImpl class searchEmployees() get child bc added to parent");
+				Set<BusinessCaseEntity> bcList = new HashSet<>();
+				Set<BcEmployeeEntity> bcEmplList = new HashSet<>();
+			//	p.getChildParentList().forEach(cp -> {
+				LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() filter applied");
+				if (volunteerFilter.getSeveranceStatus() != null
+						&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+					bcEmplList = p.getBcEmployeeEntityList().parallelStream().filter(
+							employee -> volunteerFilter.getSeveranceStatus().contains(employee.getSeveranceStatus()))
+							.collect(Collectors.toSet());
+				} else {
+					bcEmplList = p.getBcEmployeeEntityList().parallelStream()
+							.filter(employee -> employee.getSeveranceStatus() != null
+									&& (StringUtils.equalsAny(employee.getSeveranceStatus(),
+											AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V,
+											AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+											AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+											AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O,
+											AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+											AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)))
+							.collect(Collectors.toSet());
+				}
+			   for (ChildParentEntity cp : p.getChildParentList()) 
+				{
+					if (volunteerFilter.getSeveranceStatus() != null
+							&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+						bcEmplList.addAll(cp.getBusinessCaseEntity().getBcEmployeeEntityList().parallelStream()
+								.filter(employee -> volunteerFilter.getSeveranceStatus()
+										.contains(employee.getSeveranceStatus()))
+								.collect(Collectors.toSet()));
+						bcList.add(cp.getBusinessCaseEntity());
+					} else {
+						bcList.add(cp.getBusinessCaseEntity());
+						bcEmplList.addAll(cp.getBusinessCaseEntity().getBcEmployeeEntityList().parallelStream()
+								.filter(employee -> employee.getSeveranceStatus() != null
+										&& (StringUtils.equalsAny(employee.getSeveranceStatus(),
+												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V,
+												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O,
+												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)))
+								.collect(Collectors.toSet()));
+					}
+				}
+				LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() directly added employees");
+				
+				
+								
+//						for (BusinessCaseEntity bc : bcList) {
+//					if (volunteerFilter.getSeveranceStatus() != null
+//							&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+//						bcEmplList.addAll(bc
+//								.getBcEmployeeEntityList().parallelStream().filter(employee -> volunteerFilter
+//										.getSeveranceStatus().contains(employee.getSeveranceStatus()))
+//								.collect(Collectors.toSet()));
+//					} else {
+//						bcEmplList.addAll(bc.getBcEmployeeEntityList().parallelStream()
+//								.filter(employee -> employee.getSeveranceStatus() != null
+//										&& (StringUtils.equalsAny(employee.getSeveranceStatus(),
+//												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V,
+//												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA,
+//												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD,
+//												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O,
+//												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+//												AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)))
+//								.collect(Collectors.toSet()));
+//					}
+
+					if (!StringUtils.isBlank(volunteerFilter.getEmpIdOrName())) {
+						bcEmplList = bcEmplList.parallelStream()
+								.filter(employee -> (StringUtils.isEmpty(volunteerFilter.getEmpIdOrName()) ? true
+										: StringUtils.containsIgnoreCase(employee.getEnterpriseId(),
+												volunteerFilter.getEmpIdOrName())
+												|| StringUtils.containsIgnoreCase(
+														(employee.getLegalLastName() + ", "
+																+ employee.getLegalFirstName()),
+														volunteerFilter.getEmpIdOrName())))
+								.collect(Collectors.toSet());
+					}
+					if (volunteerFilter.getUnion() != null && CollectionUtils.isNotEmpty(volunteerFilter.getUnion())) {
+						bcEmplList = bcEmplList.parallelStream()
+								.filter(employee -> volunteerFilter.getUnion().contains(employee.getUnionLocal()))
+								.collect(Collectors.toSet());
+					}
+					if (volunteerFilter.getCba() != null && CollectionUtils.isNotEmpty(volunteerFilter.getCba())) {
+						bcEmplList = bcEmplList.parallelStream()
+								.filter(employee -> volunteerFilter.getCba().contains(employee.getCollectiveAgreementDescription()))
+								.collect(Collectors.toSet());
+					}
+//				}
+				LOGGER.info(
+						"End of Parent BC Childs----");
+				bcListTemp.addAll(bcEmplList);	
+		});
+			
+			LOGGER.info(
+					"End of Parent ----" +bcListTemp.size());
+			bcListTemp.forEach(parentEmployee->{
+				volunteerList.add(VolunteerList.builder().enterpriseId(parentEmployee.getEnterpriseId())
+					//.employeeName(parentEmployee.getDisplayName())
+					.firstName(parentEmployee.getLegalFirstName())
+					.lastName(parentEmployee.getLegalLastName())
+					.seniorityDate(parentEmployee.getSeniorityDate())
+					.continuousServiceDate(parentEmployee.getCalculatedServiceDt())
+					.businessCaseNoPc(parentEmployee.getParentBusinessCaseEntity()== null ?  parentEmployee.getBusinessCaseEntity().getPsBusinessCaseNumber() : parentEmployee.getParentBusinessCaseEntity().getParentBusinessCaseNumber())
+					.planCode(parentEmployee.getParentBusinessCaseEntity()== null ? parentEmployee.getBusinessCaseEntity().getPlanCodeEntity().getPlanCode() : parentEmployee.getParentBusinessCaseEntity().getPlanCodeEntity().getPlanCode())
+					.bcStatus(parentEmployee.getParentBusinessCaseEntity()== null ? parentEmployee.getBusinessCaseEntity().getStatus() : parentEmployee.getParentBusinessCaseEntity().getStatus())
+					.businessCaseNo(parentEmployee.getParentBusinessCaseEntity()== null ? parentEmployee.getBusinessCaseEntity().getBusinessCaseNumber() : parentEmployee.getParentBusinessCaseEntity().getParentId()).isParent(true)
+					.childBusinessCaseNo(parentEmployee.getBusinessCaseEntity() == null ? null
+							: parentEmployee.getBusinessCaseEntity().getBusinessCaseNumber())
+					.CBA(parentEmployee.getCollectiveAgreementDescription()).union(parentEmployee.getUnionLocal())
+					.statusCode(parentEmployee.getSeveranceStatus())
+					.universe(parentEmployee.getParentBusinessCaseEntity()==null ?0: parentEmployee.getParentBusinessCaseEntity().getUniverse())
+//							getParentBusinessCaseEntity() == null ? 0 : 
+//						parentBusinessCaseRepository.getUniverseCount(parentEmployee.getParentBusinessCaseEntity().getParentId()))
+					.surplus(parentEmployee.getParentBusinessCaseEntity() == null ? 0 : Long.parseLong(parentEmployee.getParentBusinessCaseEntity().getSurplusCount()))
+					.volNotificationStatusSent(parentEmployee.getVolNotificationStatus())
+					.volNotificationTimestamp(parentEmployee.getVolNotificationDate()).build());
+			});
+			if (!StringUtils.isBlank(volunteerFilter.getEmpIdOrName())) {
+				volunteerListTemp = volunteerList.parallelStream()
+						.filter(employee -> (StringUtils.isEmpty(volunteerFilter.getEmpIdOrName()) ? true
+								: StringUtils.containsIgnoreCase(employee.getEnterpriseId(),
+										volunteerFilter.getEmpIdOrName())
+										|| StringUtils.containsIgnoreCase(
+												(employee.getLastName() + ", " + employee.getFirstName()),
+												volunteerFilter.getEmpIdOrName())))
+						.collect(Collectors.toList());
+				if(!volunteerListTemp.isEmpty()) {
+					volunteerList.clear();
+					volunteerList.addAll(volunteerListTemp);
+					volunteerListTemp.clear();
+				}
+			}
+			
+			LOGGER.info(
+					"End of Volnteer List----" +volunteerList.size());
+		}
+		
+		
+		
+		
+		/*
+		 * set filter details
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() set filter details");
+		List<String> unionList = volunteerList.parallelStream()
+				.filter(employee -> !StringUtils.isEmpty(employee.getUnion()))
+				.sorted(Comparator.comparing(VolunteerList::getUnion)).map(VolunteerList::getUnion).distinct()
+				.collect(Collectors.toList());
+		List<String> cbaList = volunteerList.parallelStream()
+				.filter(employee -> !StringUtils.isEmpty(employee.getCBA()))
+				.sorted(Comparator.comparing(VolunteerList::getCBA)).map(VolunteerList::getCBA).distinct()
+				.collect(Collectors.toList());
+		/*
+		 * Pagination details
+		 */
+		List<VolunteerList> response = volunteerList.stream().distinct().collect(Collectors.toList());
+		Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+		int start = (int) pageable.getOffset();
+		int end = Math.min((start + pageable.getPageSize()), response.size());
+		if (StringUtils.equals(volunteerFilter.getSort(), "businessCaseNoPc")) {
+			Comparator<VolunteerList> defaultCompare = Comparator.comparing(VolunteerList::getPlanCode)
+					.thenComparing(VolunteerList::getBusinessCaseNo).thenComparing(VolunteerList::getSeniorityDate);
+			response.sort(defaultCompare);
+		}
+		// IVD-85917 Default sorting on seniority date was having inconsistent sorting
+		// due to same date so adding second comparison point
+		else if (StringUtils.equals(volunteerFilter.getSort(), "continuousServiceDate")) {
+			Comparator<VolunteerList> defaultCompare = Comparator.comparing(VolunteerList::getContinuousServiceDate)
+					.thenComparing(VolunteerList::getEnterpriseId).thenComparing(VolunteerList::getBusinessCaseNo);
+			response.sort(defaultCompare);
+		} else
+			response.sort(sortingVolunteerOptions.get(volunteerFilter.getSort()));
+		if ("desc".equals(volunteerFilter.getOrder()))
+			Collections.reverse(response);
+
+		Page<VolunteerList> volunteerListRs = new PageImpl<>(response.subList(start, end), pageable, response.size());
+		List<String> bcList = response.stream().filter(employee -> !StringUtils.isEmpty(employee.getBusinessCaseNoPc()))
+				.sorted(Comparator.comparing(VolunteerList::getPlanCode)
+						.thenComparing(VolunteerList::getBusinessCaseNo))
+				.map(VolunteerList::getBusinessCaseNoPc).distinct().collect(Collectors.toList());
+		long volunteerCount = response.stream()
+				.filter(employee -> employee.getStatusCode().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+						|| employee.getStatusCode().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+						|| employee.getStatusCode().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD))
+				.count();
+		long overSubcribedCount = response.stream()
+				.filter(employee -> employee.getStatusCode() != null && StringUtils.equalsAny(employee.getStatusCode(),
+						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O,
+						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA,
+						AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD))
+				.count();
+		/*
+		 * set status for UI
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() set status for UI");
+		response.forEach(v -> {
+			switch (v.getStatusCode()) {
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_V);
+				break;
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_O);
+				break;
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VA);
+				break;
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VD);
+				break;
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_OA);
+				break;
+			case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD:
+				v.setStatusCode(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_OD);
+				break;
+			default:
+				break;
+			}
+		});
+		Set<String> severanceStatusList = response.stream()
+				.filter(employee -> !StringUtils.isEmpty(employee.getStatusCode())).map(VolunteerList::getStatusCode)
+				.collect(Collectors.toSet());
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() method end");
+		return VolunteerListResponse.builder().volunteerList(volunteerListRs.getContent()).cbaList(cbaList)
+				.bcList(bcList).unionList(unionList).severanceStatusList(severanceStatusList)
+				.volunteerCount(volunteerCount).overSubscribe(overSubcribedCount)
+				.universe(universeCount.stream().mapToLong(Long::intValue).sum())
+				.surPlus(surplusCount.stream().mapToLong(Long::longValue).sum())
+				.numberOfElements(volunteerListRs.getNumberOfElements())
+				.currentPageNumber(volunteerListRs.getPageable().getPageNumber() + 1)
+				.totalElements(volunteerListRs.getTotalElements()).pageSize(volunteerListRs.getPageable().getPageSize())
+				.totalPages(volunteerListRs.getTotalPages()).build();
+	}
+
+	public VolunteerListResponse searchEmployees(VolunteerManagementFilter volunteerFilter) {
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() method start");
+
+		if (volunteerFilter.getSeveranceStatus() != null) {
+			List<String> status = new ArrayList<>();
+			volunteerFilter.getSeveranceStatus().forEach(v -> {
+				switch (v) {
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_V:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_O:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VA:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_VD:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_OA:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA);
+					break;
+				case AssociateBusinessCaseConstant.VOLUNTEER_STATUS_CODE_OD:
+					status.add(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD);
+					break;
+				default:
+					break;
+				}
+			});
+			volunteerFilter.getSeveranceStatus().clear();
+			volunteerFilter.setSeveranceStatus(status);
+		}
+
+		List<VolunteerList> volunteerList = new ArrayList<>();
+		/*
+		 * get all BCs
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() getting all BCs");
+
+		// get parent BC numbers based on filter criteria
+		List<Long> bcId = new ArrayList<>();
+		List<Long> bcIdParent = new ArrayList<>();
+
+		List<ParentBusinessCaseEntity> parentBcEntityLists = parentBusinessCaseRepository
+				.findAll(volunteerManagementSpecification.getVolunteerParentBcFilter(volunteerFilter));
+		volunteerFilter.setParentBusinessCaseNumber(parentBcEntityLists.stream()
+				.map(ParentBusinessCaseEntity::getParentBusinessCaseNumber).collect(Collectors.toList()));
+		if (CollectionUtils.isNotEmpty(volunteerFilter.getParentBusinessCaseNumber())) {
+			List<BusinessCaseEntity> bcEntityListforParent = associateBcRepository
+					.findAll(volunteerManagementSpecification.getVolunteerEmployeeFilterForParent(volunteerFilter));
+
+			List<ChildParentEntity> InParent = new ArrayList<>();
+			bcEntityListforParent.forEach(e -> {
+				InParent.addAll(e.getChildParentList());
+			});
+			InParent.forEach(p -> {
+				if (p.getParentStatus().equalsIgnoreCase("Active")) {
+					bcId.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+					bcIdParent.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+				}
+			});
+		}
+
+		/*
+		 * get all BCs
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class  searchEmployees() gettingmethod get all BCs from associateBcRepository");
+		List<BusinessCaseEntity> bcEntityList = associateBcRepository
+				.findAll(volunteerManagementSpecification.getVolunteerEmployeeFilter(volunteerFilter));
+
+		/*
+		 * get child BC which is not added to parent
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchEmployees() getting child BC which is not added to parent");
+		List<ChildParentEntity> notInParent = new ArrayList<>();
+		bcEntityList.forEach(e -> {
+			notInParent.addAll(e.getChildParentList());
+		});
+		notInParent.forEach(p -> {
+			if (p.getParentStatus().equalsIgnoreCase("Active")) {
+				bcId.add(p.getBusinessCaseEntity().getBusinessCaseNumber());
+			}
+		});
+		volunteerFilter.setBcNumber(bcId.stream().distinct().collect(Collectors.toList()));
+		List<BusinessCaseEntity> childBcEntityList = associateBcRepository
+				.findAll(volunteerManagementSpecification.getVolunteerEmployeeFilter(volunteerFilter));
+
+		/*
+		 * get parent Bc
+		 */
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() getting parent Bc");
+		List<ParentBusinessCaseEntity> parentBcEntityList = new ArrayList<>();
+		List<ChildParentEntity> childParentEntityList = new ArrayList<>();
+		if (CollectionUtils.isNotEmpty(bcIdParent)) {
+			List<Long> parentId = associateBcRepository.getParentBc(volunteerFilter.getBusinessCaseNumber());
+			childParentEntityList = childParentRepository
+					.findAll(volunteerManagementSpecification.getChildParentFilter(bcIdParent, parentId));
+			childParentEntityList.forEach(cp -> {
+				if (cp.getParentStatus().equalsIgnoreCase("Active")) {
+					parentBcEntityList.add(cp.getParentBusinessCaseEntity());
+				}
+				if (cp.getBusinessCaseEntity().getStatus().equalsIgnoreCase("Active")
+						&& !cp.getParentStatus().equalsIgnoreCase("Active") && !volunteerFilter.getBcNumber()
+								.contains(cp.getBusinessCaseEntity().getBusinessCaseNumber())) {
+					childBcEntityList.add(cp.getBusinessCaseEntity());
+				}
+			});
+		}
+
+		/*
+		 * Set volunteer List for Active child BC which was not added to Active Parent
+		 * BC
+		 */
+		LOGGER.info(
+				"Inside VolunteerManagementServiceImpl class searchEmployees()Set volunteer List for Active child BC which was not added to Active Parent Bc");
+		Set<BusinessCaseEntity> childBcEntityListRs = childBcEntityList.stream().distinct().collect(Collectors.toSet());
+		childBcEntityListRs.forEach(child -> {
+			Set<BcEmployeeEntity> bcEmplList = new HashSet<>();
+
+			if (volunteerFilter.getSeveranceStatus() != null
+					&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+				bcEmplList = child.getBcEmployeeEntityList().parallelStream().filter(
+						employee -> volunteerFilter.getSeveranceStatus().contains(employee.getSeveranceStatus()))
+						.collect(Collectors.toSet());
+			} else {
+				bcEmplList = child.getBcEmployeeEntityList().parallelStream().filter(employee -> employee
+						.getSeveranceStatus() != null
+						&& (employee.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA)
+								|| employee.getSeveranceStatus()
+										.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)))
+						.collect(Collectors.toSet());
+			}
+
+			if (!StringUtils.isBlank(volunteerFilter.getEmpIdOrName())) {
+				bcEmplList = bcEmplList.parallelStream()
+						.filter(employee -> (StringUtils.isEmpty(volunteerFilter.getEmpIdOrName()) ? true
+								: StringUtils.containsIgnoreCase(employee.getEnterpriseId(),
+										volunteerFilter.getEmpIdOrName())
+										|| StringUtils.containsIgnoreCase(
+												(employee.getLegalLastName() + ", " + employee.getLegalFirstName()),
+												volunteerFilter.getEmpIdOrName())))
+						.collect(Collectors.toSet());
+			}
+
+			// union filter added -- need to optimize code later
+
+			if (volunteerFilter.getUnion() != null && CollectionUtils.isNotEmpty(volunteerFilter.getUnion())) {
+				bcEmplList = bcEmplList.parallelStream()
+						.filter(employee -> volunteerFilter.getUnion().contains(employee.getUnionLocal()))
+						.collect(Collectors.toSet());
+			}
+			if (volunteerFilter.getCba() != null && CollectionUtils.isNotEmpty(volunteerFilter.getCba())) {
+				bcEmplList = bcEmplList.parallelStream()
+						.filter(employee -> volunteerFilter.getCba().contains(employee.getCollectiveAgreementDescription()))
+						.collect(Collectors.toSet());
+			}
+			// end
+
+			bcEmplList.forEach(empl -> {
+
+				volunteerList.add(VolunteerList.builder().enterpriseId(empl.getEnterpriseId())
+						.businessCaseNoPc(empl.getBusinessCaseEntity().getPsBusinessCaseNumber()).build());
+
+			});
+
+		});
+
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchVolunteerBc() method Grouping by parent BC");
+		if (CollectionUtils.isNotEmpty(parentBcEntityList)) {
+			/*
+			 * Set volunteer List for Active Parent BC
+			 */
+			LOGGER.info(
+					"Inside VolunteerManagementServiceImpl class searchEmployees()Set volunteer List for Active Parent BC");
+			Set<ParentBusinessCaseEntity> parentBcEntityListRs = parentBcEntityList.stream().distinct()
+					.collect(Collectors.toSet());
+			parentBcEntityListRs.forEach(p -> {
+
+				// get child bc added to parent
+				LOGGER.info(
+						"Inside VolunteerManagementServiceImpl class searchEmployees() get child bc added to parent");
+				Set<BusinessCaseEntity> bcList = new HashSet<>();
+				p.getChildParentList().forEach(cp -> {
+					bcList.add(cp.getBusinessCaseEntity());
+				});
+				/*
+				 * directly added employees
+				 */
+				LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() directly added employees");
+				Set<BcEmployeeEntity> bcEmplList = new HashSet<>();
+				// filter applied
+				LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() filter applied");
+
+				if (volunteerFilter.getSeveranceStatus() != null
+						&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+					bcEmplList = p.getBcEmployeeEntityList().parallelStream().filter(
+							employee -> volunteerFilter.getSeveranceStatus().contains(employee.getSeveranceStatus()))
+							.collect(Collectors.toSet());
+				} else {
+					bcEmplList = p.getBcEmployeeEntityList().parallelStream().filter(employee -> employee
+							.getSeveranceStatus() != null
+							&& (employee.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+									|| employee.getSeveranceStatus()
+											.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+									|| employee.getSeveranceStatus()
+											.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD)
+									|| employee.getSeveranceStatus()
+											.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O)
+									|| employee.getSeveranceStatus()
+											.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA)
+									|| employee.getSeveranceStatus()
+											.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)))
+							.collect(Collectors.toSet());
+				}
+				for (BusinessCaseEntity bc : bcList) {
+					if (volunteerFilter.getSeveranceStatus() != null
+							&& CollectionUtils.isNotEmpty(volunteerFilter.getSeveranceStatus())) {
+						bcEmplList.addAll(bc
+								.getBcEmployeeEntityList().parallelStream().filter(employee -> volunteerFilter
+										.getSeveranceStatus().contains(employee.getSeveranceStatus()))
+								.collect(Collectors.toSet()));
+					} else {
+						bcEmplList.addAll(bc.getBcEmployeeEntityList().parallelStream()
+								.filter(employee -> employee.getSeveranceStatus() != null && (employee
+										.getSeveranceStatus().equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_V)
+										|| employee.getSeveranceStatus()
+												.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VA)
+										|| employee.getSeveranceStatus()
+												.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_VD)
+										|| employee.getSeveranceStatus()
+												.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_O)
+										|| employee.getSeveranceStatus()
+												.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OA)
+										|| employee.getSeveranceStatus()
+												.equals(AssociateBusinessCaseConstant.VOLUNTEER_STATUS_OD)))
+								.collect(Collectors.toSet()));
+					}
+
+					if (!StringUtils.isBlank(volunteerFilter.getEmpIdOrName())) {
+						bcEmplList = bcEmplList.parallelStream()
+								.filter(employee -> (StringUtils.isEmpty(volunteerFilter.getEmpIdOrName()) ? true
+										: StringUtils.containsIgnoreCase(employee.getEnterpriseId(),
+												volunteerFilter.getEmpIdOrName())
+												|| StringUtils.containsIgnoreCase(
+														(employee.getLegalLastName() + ", "
+																+ employee.getLegalFirstName()),
+														volunteerFilter.getEmpIdOrName())))
+								.collect(Collectors.toSet());
+					}
+
+					// union filter added -- need to optimize code later
+
+					if (volunteerFilter.getUnion() != null && CollectionUtils.isNotEmpty(volunteerFilter.getUnion())) {
+						bcEmplList = bcEmplList.parallelStream()
+								.filter(employee -> volunteerFilter.getUnion().contains(employee.getUnionLocal()))
+								.collect(Collectors.toSet());
+					}
+					if (volunteerFilter.getCba() != null && CollectionUtils.isNotEmpty(volunteerFilter.getCba())) {
+						bcEmplList = bcEmplList.parallelStream()
+								.filter(employee -> volunteerFilter.getCba().contains(employee.getCollectiveAgreementDescription()))
+								.collect(Collectors.toSet());
+					}
+					// end
+
+					bcEmplList.forEach(empl -> {
+
+						volunteerList.add(VolunteerList.builder().enterpriseId(empl.getEnterpriseId())
+								.businessCaseNoPc(p.getParentBusinessCaseNumber()).build());
+
+					});
+				}
+
+			});
+		}
+
+		List<VolunteerList> response = volunteerList.stream().distinct().collect(Collectors.toList());
+
+		LOGGER.info("Inside VolunteerManagementServiceImpl class searchEmployees() method end");
+		return VolunteerListResponse.builder().volunteerList(response).build();
+	}
+
+}
